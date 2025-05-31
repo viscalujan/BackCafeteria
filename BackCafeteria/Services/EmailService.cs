@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using CafeteriaAPI.Models;
+using System.Net;
 using System.Net.Mail;
 using System.Net.Mime;
 
@@ -58,6 +59,56 @@ namespace BackCafeteria.Services
             {
                 Console.WriteLine($"ERROR al enviar correo a {correoDestino}: {ex.Message}");
                 throw; // Relanzamos la excepción para manejo superior
+            }
+        }
+
+
+        public static async Task EnviarCorreoVentaCredito(string correoDestino, string nombreUsuario, DateTime fecha, decimal total, List<VentaDetalle> detalles, CafeteriaContext context)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(correoDestino))
+                    throw new ArgumentException("El correo no puede estar vacío");
+
+                string productos = string.Join("<br>", detalles.Select(d =>
+                {
+                    var producto = context.Productos.FirstOrDefault(p => p.Id == d.ProductoId);
+                    return $"{producto?.Nombre ?? "Producto desconocido"} - Cantidad: {d.Cantidad} - Precio unitario: {d.PrecioUnitario:C}";
+                }));
+
+                string cuerpo = $@"
+            <h3>Hola {nombreUsuario},</h3>
+            <p>Se ha realizado un pago con <strong>crédito</strong> en la cafetería del Tecnológico de Delicias.</p>
+            <p><strong>Fecha y hora:</strong> {fecha:dd/MM/yyyy HH:mm}</p>
+            <p><strong>Monto total:</strong> {total:C}</p>
+            <p><strong>Productos:</strong><br>{productos}</p>
+            <p>Gracias por tu compra.</p>
+        ";
+
+                var mensaje = new MailMessage
+                {
+                    From = new MailAddress("robertoisaacmc@gmail.com", "Cafetería"),
+                    Subject = "Confirmación de venta con crédito - Cafetería IT Delicias",
+                    IsBodyHtml = true,
+                    Body = cuerpo
+                };
+
+                mensaje.To.Add(correoDestino);
+
+                using var smtp = new SmtpClient("smtp.gmail.com", 587)
+                {
+                    EnableSsl = true,
+                    Credentials = new NetworkCredential("robertoisaacmc@gmail.com", "rwbs tjhx hcvd pzje"),
+                    Timeout = 10000
+                };
+
+                await smtp.SendMailAsync(mensaje);
+                Console.WriteLine($"Correo de venta enviado correctamente a {correoDestino}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR al enviar correo de venta: {ex.Message}");
+                throw;
             }
         }
     }

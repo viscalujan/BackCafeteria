@@ -30,5 +30,6 @@ namespace BackCafeteria.Helpers
             byte[] hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(texto));
             return Convert.ToHexString(hashBytes); // desde .NET 5+ / .ToHexString es más limpio que BitConverter
         }
+    
     }
 }

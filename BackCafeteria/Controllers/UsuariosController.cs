@@ -242,5 +242,31 @@ namespace CafeteriaAPI.Controllers
         }
 
 
+        [HttpGet("ExisteNumeroControl")]
+        public async Task<ActionResult<bool>> ExisteNumeroControl(string numeroControl)
+        {
+            return await _context.Usuarios.AnyAsync(u => u.Contra == numeroControl);
+        }
+
+        [HttpGet("ExisteCorreo")]
+        public async Task<ActionResult<bool>> ExisteCorreo(string correo)
+        {
+            return await _context.Usuarios.AnyAsync(u => u.Correo == correo);
+        }
+
+
+        [HttpGet("credito-liquidacion")]
+        public async Task<IActionResult> ObtenerCreditoLiquidacion()
+        {
+            var usuarioLiquidacion = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.Contra == "liquidacion");
+
+            if (usuarioLiquidacion == null)
+                return NotFound("Usuario de liquidación no encontrado.");
+
+            return Ok(new { credito = usuarioLiquidacion.Credito });
+        }
+
+
     }
 }

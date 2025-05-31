@@ -11,6 +11,7 @@ using System.Drawing; // Para Bitmap
 using System.IO;
 using ZXing.Windows.Compatibility;
 using BackCafeteria.Models;
+using BackCafeteria.Services;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -60,6 +61,7 @@ public class VentasController : ControllerBase
 
         if (metodo == "credito")
         {
+
             if (string.IsNullOrWhiteSpace(dto.HashQR))
                 return BadRequest("El hash del QR es obligatorio para pagos con crédito.");
 
@@ -69,6 +71,9 @@ public class VentasController : ControllerBase
 
             if (usuario.Credito < total)
                 return BadRequest("Crédito insuficiente.");
+
+            await EmailService.EnviarCorreoVentaCredito(usuario.Correo, usuario.Nombre, DateTime.Now, total, detallesVenta, _context);
+
 
             usuario.Credito -= total;
 
