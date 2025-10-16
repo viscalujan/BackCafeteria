@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Text;
 using CafeteriaAPI.Models;
 using BCrypt.Net;
+using BackCafeteria.Models;
 
 namespace CafeteriaAPI.Controllers
 {

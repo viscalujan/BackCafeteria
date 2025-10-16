@@ -1,7 +1,8 @@
 ﻿using BackCafeteria.Models;
+using CafeteriaAPI.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace CafeteriaAPI.Models
+namespace BackCafeteria.Models
 {
     public class CafeteriaContext : DbContext
     {
@@ -15,7 +16,6 @@ namespace CafeteriaAPI.Models
         public DbSet<Aut> Aut { get; set; }
 
         public DbSet<HistorialCredito> HistorialCreditos => Set<HistorialCredito>();
-
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -36,14 +36,12 @@ namespace CafeteriaAPI.Models
 
             modelBuilder.Entity<HistorialCredito>(entity =>
             {
-                entity.ToTable("HistorialCredito"); // <--- Esta línea corrige el nombre de la tabla
+                entity.ToTable("HistorialCredito");
                 entity.Property(h => h.NumeroControlAfectado).IsRequired().HasMaxLength(100);
                 entity.Property(h => h.Cantidad).HasColumnType("decimal(10,2)");
                 entity.Property(h => h.Fecha).IsRequired();
                 entity.Property(h => h.AutCorreo).IsRequired().HasMaxLength(100);
             });
-
-
         }
     }
 }

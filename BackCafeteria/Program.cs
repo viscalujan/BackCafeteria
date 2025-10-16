@@ -1,3 +1,4 @@
+using BackCafeteria.Models;
 using CafeteriaAPI.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -44,10 +45,12 @@ builder.Services.AddAuthentication(config =>
     };
 });
 
+// CÓDIGO NUEVO
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
 builder.Services.AddDbContext<CafeteriaContext>(options =>
-{
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
-});
+    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString))
+);
 
 var app = builder.Build();
 
