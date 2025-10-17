@@ -1,4 +1,8 @@
-﻿public class Aut
+﻿
+using System.ComponentModel.DataAnnotations.Schema;
+
+[Table("aut")]
+public class Aut
 {
     public int Id { get; set; }
     public string Nombre { get; set; }
