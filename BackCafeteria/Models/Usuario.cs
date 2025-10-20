@@ -1,22 +1,29 @@
-﻿using System.Text.Json.Serialization;
+﻿using System;
+using System.Collections.Generic;
 
-public class Usuario
+namespace BackCafeteria.Models;
+
+public partial class Usuario
 {
-    public int Id { get; set; }
-    public string Nombre { get; set; }
-    public string Correo { get; set; }
+    public int IdUsuario { get; set; }
 
-    [JsonPropertyName("NumeroControl")]
-    public string Contra { get; set; }
-    
-    [JsonPropertyName("CodigoQR")]
-    public byte[]? Huella { get; set; }
+    public string NombreUsuario { get; set; } = null!;
 
-    public decimal Credito { get; set; }
+    public string CorreoUsuario { get; set; } = null!;
 
-    [JsonIgnore] // el rol no se muestra, como pediste
-    public string Rol { get; set; }
-    public string CodigoQRTexto { get; set; }
-    public string Contrasena { get; set; }
+    public string? NumeroControl { get; set; }
 
+    public decimal? Credito { get; set; }
+
+    public string? Huella { get; set; }
+
+    public string? RolUsuario { get; set; }
+
+    public string? Codigqrtexto { get; set; }
+
+    public string ContraUsuario { get; set; } = null!;
+
+    public virtual ICollection<Pedido> Pedidos { get; set; } = new List<Pedido>();
+
+    public virtual ICollection<Venta> Venta { get; set; } = new List<Venta>();
 }

@@ -1,21 +1,21 @@
-﻿namespace CafeteriaAPI.Models
+﻿using System;
+using System.Collections.Generic;
+
+namespace BackCafeteria.Models;
+
+public partial class VentaDetalle
 {
-    public class VentaDetalle
-    {
-        public int Id { get; set; }
+    public int IdVdetalle { get; set; }
 
-        public int VentaId { get; set; }
+    public int FkIdVenta { get; set; }
 
-        public int ProductoId { get; set; }
+    public int FkIdProducto { get; set; }
 
-        public int Cantidad { get; set; }
+    public int CantidadProducto { get; set; }
 
-        public decimal PrecioUnitario { get; set; }
+    public decimal PrecioUnitario { get; set; }
 
-        public Producto? Producto { get; set; }
+    public virtual Producto FkIdProductoNavigation { get; set; } = null!;
 
-        public Venta? Venta { get; set; }
-
-
-    }
+    public virtual Venta FkIdVentaNavigation { get; set; } = null!;
 }

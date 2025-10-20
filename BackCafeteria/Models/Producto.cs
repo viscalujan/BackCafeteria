@@ -1,18 +1,19 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System;
+using System.Collections.Generic;
 
-namespace CafeteriaAPI.Models
+namespace BackCafeteria.Models;
+
+public partial class Producto
 {
-    public class Producto
-    {
-        public int Id { get; set; }
+    public int IdProducto { get; set; }
 
-        [Required]
-        public string Nombre { get; set; } = null!;
+    public string NombreProducto { get; set; } = null!;
 
-        [Required]
-        public decimal Precio { get; set; }
+    public decimal PrecioProducto { get; set; }
 
-        [Required]
-        public int Cantidad { get; set; }  // <-- antes era Stock
-    }
+    public int CantidadProducto { get; set; }
+
+    public virtual ICollection<PedidoDetalle> PedidoDetalles { get; set; } = new List<PedidoDetalle>();
+
+    public virtual ICollection<VentaDetalle> VentaDetalles { get; set; } = new List<VentaDetalle>();
 }

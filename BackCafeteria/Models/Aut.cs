@@ -1,12 +1,17 @@
-﻿
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System;
+using System.Collections.Generic;
 
-[Table("aut")]
-public class Aut
+namespace BackCafeteria.Models;
+
+public partial class Aut
 {
-    public int Id { get; set; }
-    public string Nombre { get; set; }
-    public string Correo { get; set; }
-    public string Contra { get; set; }
-    public string Rol { get; set; }
+    public int IdAut { get; set; }
+
+    public string NombreAut { get; set; } = null!;
+
+    public string CorreoAut { get; set; } = null!;
+
+    public string ContraAut { get; set; } = null!;
+
+    public string? RolAut { get; set; }
 }

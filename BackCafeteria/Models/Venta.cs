@@ -1,21 +1,21 @@
-﻿using CafeteriaAPI.Models;
+﻿using System;
+using System.Collections.Generic;
 
-public class Venta
+namespace BackCafeteria.Models;
+
+public partial class Venta
 {
-    public int Id { get; set; }
+    public int IdVentas { get; set; }
 
-    public int? UsuarioId { get; set; } 
+    public int FkIdUsuario { get; set; }
 
-    public DateTime Fecha { get; set; } = DateTime.Now;
+    public DateTime FechaVenta { get; set; }
 
-    public decimal Total { get; set; }
+    public decimal TotalVenta { get; set; }
 
-    public string MetodoPago { get; set; } = null!;
+    public string? MetodoPago { get; set; }
 
-    public Usuario? Usuario { get; set; }
+    public virtual Usuario FkIdUsuarioNavigation { get; set; } = null!;
 
-    public List<VentaDetalle> Detalles { get; set; } = new();
-
-  
-
+    public virtual ICollection<VentaDetalle> VentaDetalles { get; set; } = new List<VentaDetalle>();
 }
