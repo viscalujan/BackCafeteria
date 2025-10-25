@@ -1,17 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-
-namespace BackCafeteria.Models;
-
-public partial class HistorialCredito
+﻿namespace BackCafeteria.Models
 {
-    public int IdHcredito { get; set; }
+    public class HistorialCredito
+    {
+        public int IdHistorialCredito { get; set; } // ✅ clave primaria
+        public int FkIdUsuario { get; set; }
+        public decimal Monto { get; set; }
+        public DateTime FechaMovimiento { get; set; }
 
-    public string? Ncafectado { get; set; }
-
-    public decimal CantidadHcredito { get; set; }
-
-    public DateTime FechaHcredito { get; set; }
-
-    public string? AutCorreo { get; set; }
+        public Usuario? FkIdUsuarioNavigation { get; set; }
+    }
 }

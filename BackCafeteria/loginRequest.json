@@ -1,0 +1,36 @@
+{
+  "loginRequest": {
+    "correoUsuario": "usuario@example.com",
+    "contraUsuario": "MiPassword123"
+  },
+  "huella": "VGhpcyBpcyBhIHNhbXBsZSBmaWxlIGVuY29kZWQgaW4gQmFzZTY0",
+  "usuario": {
+    "idUsuario": 1,
+    "nombreUsuario": "Juan Perez",
+    "correoUsuario": "usuario@example.com",
+    "contraUsuario": "MiPassword123",
+    "rolUsuario": "Admin",
+    "numeroControl": "123456",
+    "credito": 100.50,
+    "huella": "VGhpcyBpcyBhIHNhbXBsZSBmaWxlIGVuY29kZWQgaW4gQmFzZTY0",
+    "codigqrtexto": "QR123456"
+  },
+  "venta": {
+    "idVentas": 1,
+    "fechaVenta": "2025-10-24T16:00:00",
+    "totalVenta": 250.75,
+    "metodoPago": "Tarjeta",
+    "fkIdUsuario": 1
+  },
+  "ventaDetalle": [
+    {
+      "fkIdVenta": 1,
+      "producto": {
+        "idProducto": 1,
+        "nombre": "Café Americano"
+      },
+      "cantidad": 2,
+      "precioUnitario": 50.00
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "usuario": {
+    "idUsuario": 1,
+    "nombreUsuario": "Juan Perez Actualizado",
+    "correoUsuario": "juan.actualizado@example.com",
+    "credito": 150,
+    "huella": "BASE64_DE_TU_HUELLA_AQUI"
+  }
+}

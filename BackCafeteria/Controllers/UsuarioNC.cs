@@ -1,66 +1,58 @@
-﻿using BackCafeteria.Models;
-using CafeteriaAPI.Models;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using QRCoder;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
-using System.Threading.Tasks;
-using ZXing.QrCode.Internal;
+﻿using Microsoft.AspNetCore.Mvc;
+using BackCafeteria.Models;
+using BackCafeteria.Services;
+using System;
+using System.Text;
+using Microsoft.IdentityModel.Tokens;
 
-[ApiController]
-[Route("api/[controller]")]
-[Authorize(Roles = "alumno")]
-public class UsuarioNCController : ControllerBase
+namespace BackCafeteria.Controllers
 {
-    private readonly CafeteriaContext _context;
-
-    public UsuarioNCController(CafeteriaContext context)
+    [ApiController]
+    [Route("api/[controller]")]
+    public class UsuarioNC : ControllerBase
     {
-        _context = context;
-    }
+        private readonly CafeteriaDbv2Context _context;
 
-    // 1. Obtener historial de crédito
-    [HttpGet("historial-credito/{numeroControl}")]
-    public async Task<IActionResult> ObtenerHistorialCreditoUsuario(string numeroControl)
-    {
-        var historial = await _context.HistorialCreditos
-            .Where(h => h.NumeroControlAfectado == numeroControl)
-            .OrderByDescending(h => h.Fecha)
-            .ToListAsync();
-
-        if (!historial.Any())
+        public UsuarioNC(CafeteriaDbv2Context context)
         {
-            return NotFound($"No se encontró historial para el número de control: {numeroControl}");
+            _context = context;
         }
 
-        return Ok(historial);
+        [HttpPost("EnviarQR")]
+        public IActionResult EnviarQR([FromBody] Usuario usuario)
+        {
+            try
+            {
+                byte[] huellaParaCorreo;
+
+                if (!string.IsNullOrEmpty(usuario.HuellaBase64))
+                {
+                    // Convertimos el Base64 a byte[] para enviarlo
+                    huellaParaCorreo = Convert.FromBase64String(usuario.HuellaBase64);
+                }
+                else if (usuario.Huella != null && usuario.Huella.Length > 0)
+                {
+                    // Si ya está como byte[], lo usamos directamente
+                    huellaParaCorreo = usuario.Huella;
+                }
+                else
+                {
+                    return BadRequest("No se proporcionó huella válida para enviar por correo.");
+                }
+
+                // Ahora enviamos el byte[]
+                EmailService.EnviarCorreoConQR(usuario.CorreoUsuario, huellaParaCorreo);
+
+                return Ok(new { message = "Correo enviado correctamente" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
     }
 
-    // 2. Obtener crédito actual
-    [HttpGet("credito/{numeroControl}")]
-    public async Task<IActionResult> ObtenerCredito(string numeroControl)
-    {
-        var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.Contra == numeroControl);
-        if (usuario == null)
-            return NotFound("Usuario no encontrado.");
-
-        return Ok(new { credito = usuario.Credito });
-    }
-
-    [HttpGet("qr/{numeroControl}")]
-    public async Task<IActionResult> ObtenerCodigoQR(string numeroControl)
-    {
-        var usuario = await _context.Usuarios
-            .Where(u => u.Contra == numeroControl)
-            .Select(u => new { u.Huella, u.CodigoQRTexto })
-            .FirstOrDefaultAsync();
-
-        if (usuario == null || usuario.Huella == null)
-            return NotFound("QR no encontrado para este usuario.");
-
-        return File(usuario.Huella, "image/png", $"QR_{numeroControl}.png");
-    }
 }
+
+

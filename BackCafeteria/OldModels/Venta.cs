@@ -1,5 +1,4 @@
-﻿using CafeteriaAPI.Models;
-
+﻿
 public class Venta
 {
     public int Id { get; set; }

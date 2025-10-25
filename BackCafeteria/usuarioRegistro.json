@@ -1,0 +1,11 @@
+{
+  "usuario": {
+    "nombreUsuario": "Juan Perez",
+    "correoUsuario": "juan@example.com",
+    "contraUsuario": "MiPassword123",
+    "rolUsuario": "Estudiante",
+    "numeroControl": "20251234",
+    "huella": "BASE64_DE_TU_HUELLA_AQUI",
+    "credito": 100
+  }
+}

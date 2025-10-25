@@ -1,68 +1,58 @@
-﻿using BackCafeteria.Models;
-using CafeteriaAPI.Models;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Mvc;
+using BackCafeteria.Models;
 
-namespace CafeteriaAPI.Controllers
+namespace BackCafeteria.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Roles = "inventario,ventas")] 
     public class ProductosController : ControllerBase
     {
-        private readonly CafeteriaContext _context;
+        private readonly CafeteriaDbv2Context _context;
 
-        public ProductosController(CafeteriaContext context)
+        public ProductosController(CafeteriaDbv2Context context)
         {
             _context = context;
         }
 
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<Producto>>> GetProductos()
+        [HttpGet("productos")]
+        public IActionResult ObtenerProductos()
         {
-            return await _context.Productos.ToListAsync();
+            var productos = _context.Productos.ToList();
+            return Ok(productos);
         }
-
-        [HttpGet("{id}")]
-        public async Task<ActionResult<Producto>> GetProducto(int id)
-        {
-            var producto = await _context.Productos.FindAsync(id);
-            if (producto == null) return NotFound();
-            return producto;
-        }
-
 
         [HttpPost]
-        [Authorize(Roles = "inventario")] 
-        public async Task<ActionResult<Producto>> PostProducto(Producto producto)
+        public IActionResult CrearProducto([FromBody] Producto producto)
         {
             _context.Productos.Add(producto);
-            await _context.SaveChangesAsync();
-            return CreatedAtAction("GetProducto", new { id = producto.Id }, producto);
+            _context.SaveChanges();
+            return Ok(producto);
         }
 
         [HttpPut("{id}")]
-        [Authorize(Roles = "inventario")]
-        public async Task<IActionResult> PutProducto(int id, Producto producto)
+        public IActionResult ActualizarProducto(int id, [FromBody] Producto productoUpdate)
         {
-            if (id != producto.Id) return BadRequest();
+            var producto = _context.Productos.Find(id);
+            if (producto == null)
+                return NotFound();
 
-            _context.Entry(producto).State = EntityState.Modified;
-            await _context.SaveChangesAsync();
-            return NoContent();
+            producto.Nombre = productoUpdate.Nombre;
+            producto.Precio = productoUpdate.Precio;
+
+            _context.SaveChanges();
+            return Ok(producto);
         }
 
         [HttpDelete("{id}")]
-        [Authorize(Roles = "inventario")]
-        public async Task<IActionResult> DeleteProducto(int id)
+        public IActionResult EliminarProducto(int id)
         {
-            var producto = await _context.Productos.FindAsync(id);
-            if (producto == null) return NotFound();
+            var producto = _context.Productos.Find(id);
+            if (producto == null)
+                return NotFound();
 
             _context.Productos.Remove(producto);
-            await _context.SaveChangesAsync();
-            return NoContent();
+            _context.SaveChanges();
+            return Ok();
         }
     }
 }

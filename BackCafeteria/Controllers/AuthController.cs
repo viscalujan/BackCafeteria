@@ -4,88 +4,53 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using CafeteriaAPI.Models;
-using BCrypt.Net;
 using BackCafeteria.Models;
+using BCrypt.Net;
 
-namespace CafeteriaAPI.Controllers
+namespace BackCafeteria.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
-        private readonly CafeteriaContext _context;
+        private readonly CafeteriaDbv2Context _context;
         private readonly IConfiguration _config;
 
-        public AuthController(CafeteriaContext context, IConfiguration config)
+        public AuthController(CafeteriaDbv2Context context, IConfiguration config)
         {
             _context = context;
             _config = config;
         }
+
+        // ================= LOGIN =================
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest login)
         {
-            // 🔐 1. Busca en la tabla Aut (admin, venta, inventario...)
-            var usuario = await _context.Aut.FirstOrDefaultAsync(u => u.Correo == login.Correo);
-
-            if (usuario != null && BCrypt.Net.BCrypt.Verify(login.Contra, usuario.Contra))
+            // 🔹 1. Buscar en tabla Aut (admin, venta, inventario)
+            var usuario = await _context.Aut.FirstOrDefaultAsync(u => u.CorreoAut == login.Correo);
+            if (usuario != null && BCrypt.Net.BCrypt.Verify(login.Contra, usuario.ContraAut))
             {
-                var key = Encoding.ASCII.GetBytes(_config["settings:secretkey"]);
-                var claims = new ClaimsIdentity(new[]
-                {
-            new Claim(ClaimTypes.NameIdentifier, usuario.Nombre),
-            new Claim(ClaimTypes.Role, usuario.Rol)
-        });
-
-                var tokenDescriptor = new SecurityTokenDescriptor
-                {
-                    Subject = claims,
-                    Expires = DateTime.UtcNow.AddHours(2),
-                    SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-                };
-
-                var tokenHandler = new JwtSecurityTokenHandler();
-                var token = tokenHandler.CreateToken(tokenDescriptor);
-
-                // ✅ Solo devuelve token y rol (sin numeroControl para no-alumnos)
-                return Ok(new { token = tokenHandler.WriteToken(token), rol = usuario.Rol });
+                var token = GenerarToken(usuario.NombreAut, usuario.RolAut ?? "admin");
+                return Ok(new { token, rol = usuario.RolAut });
             }
 
-            // 🔐 2. Busca en la tabla Usuarios (alumnos)
-            var alumno = await _context.Usuarios.FirstOrDefaultAsync(u => u.Correo == login.Correo);
-
-            if (alumno != null && BCrypt.Net.BCrypt.Verify(login.Contra, alumno.Contrasena))
+            // 🔹 2. Buscar en tabla Usuarios (alumnos)
+            var alumno = await _context.Usuarios.FirstOrDefaultAsync(u => u.CorreoUsuario == login.Correo);
+            if (alumno != null && BCrypt.Net.BCrypt.Verify(login.Contra, alumno.ContraUsuario))
             {
-                var key = Encoding.ASCII.GetBytes(_config["settings:secretkey"]);
-                var claims = new ClaimsIdentity(new[]
-                {
-            new Claim(ClaimTypes.NameIdentifier, alumno.Nombre),
-            new Claim(ClaimTypes.Role, "alumno"),
-            new Claim("NumeroControl", alumno.Contra) // "Contra" = número de control
-        });
-
-                var tokenDescriptor = new SecurityTokenDescriptor
-                {
-                    Subject = claims,
-                    Expires = DateTime.UtcNow.AddHours(2),
-                    SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-                };
-
-                var tokenHandler = new JwtSecurityTokenHandler();
-                var token = tokenHandler.CreateToken(tokenDescriptor);
-
-                // ✅ Devuelve token, rol Y numeroControl (solo para alumnos)
+                var token = GenerarToken(alumno.NombreUsuario, "alumno", alumno.NumeroControl);
                 return Ok(new
                 {
-                    token = tokenHandler.WriteToken(token),
+                    token,
                     rol = "alumno",
-                    numeroControl = alumno.Contra // Asegúrate de que esto sea el número de control
+                    numeroControl = alumno.NumeroControl
                 });
             }
 
-            return Unauthorized(new { mensaje = "Credenciales inválidas" });
+            return Unauthorized(new { mensaje = "Usuario o contraseña incorrectos" });
         }
 
+        // ================= REGISTRO ADMIN =================
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] Aut nuevoUsuario, [FromQuery] string clave)
         {
@@ -93,19 +58,20 @@ namespace CafeteriaAPI.Controllers
             if (clave != claveCorrecta)
                 return Unauthorized("Clave de administrador incorrecta.");
 
-            if (string.IsNullOrWhiteSpace(nuevoUsuario.Nombre) ||
-                string.IsNullOrWhiteSpace(nuevoUsuario.Correo) ||
-                string.IsNullOrWhiteSpace(nuevoUsuario.Contra) ||
-                string.IsNullOrWhiteSpace(nuevoUsuario.Rol))
+            if (string.IsNullOrWhiteSpace(nuevoUsuario.NombreAut) ||
+                string.IsNullOrWhiteSpace(nuevoUsuario.CorreoAut) ||
+                string.IsNullOrWhiteSpace(nuevoUsuario.ContraAut) ||
+                string.IsNullOrWhiteSpace(nuevoUsuario.RolAut))
             {
                 return BadRequest("Todos los campos son obligatorios.");
             }
 
-            bool existe = await _context.Aut.AnyAsync(u => u.Correo == nuevoUsuario.Correo);
+            bool existe = await _context.Aut.AnyAsync(u => u.CorreoAut == nuevoUsuario.CorreoAut);
             if (existe)
                 return BadRequest("Ya existe un usuario con ese correo.");
 
-            nuevoUsuario.Contra = BCrypt.Net.BCrypt.HashPassword(nuevoUsuario.Contra);
+            // Hashear contraseña
+            nuevoUsuario.ContraAut = BCrypt.Net.BCrypt.HashPassword(nuevoUsuario.ContraAut);
 
             _context.Aut.Add(nuevoUsuario);
             await _context.SaveChangesAsync();
@@ -113,12 +79,43 @@ namespace CafeteriaAPI.Controllers
             return Ok(new { mensaje = "Usuario registrado correctamente." });
         }
 
-        [HttpPost]
+        // ================= LOGOUT =================
+        [HttpPost("logout")]
         public IActionResult Logout()
         {
-            HttpContext.Session.Clear();
-            return RedirectToAction("Login", "Home");
+            // Con JWT, cerrar sesión se hace eliminando el token del cliente
+            return Ok(new { mensaje = "Sesión cerrada (el token debe eliminarse del cliente)" });
+        }
+
+        // ================= MÉTODO PRIVADO PARA GENERAR JWT =================
+        private string GenerarToken(string nombre, string rol, string? numeroControl = null)
+        {
+            var key = Encoding.ASCII.GetBytes(_config["settings:secretkey"]);
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, nombre),
+                new Claim(ClaimTypes.Role, rol)
+            };
+
+            if (!string.IsNullOrEmpty(numeroControl))
+                claims.Add(new Claim("NumeroControl", numeroControl));
+
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.UtcNow.AddHours(2),
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            return tokenHandler.WriteToken(tokenHandler.CreateToken(tokenDescriptor));
         }
     }
 
+    // ================= MODELO LOGIN =================
+    public class LoginRequest
+    {
+        public string Correo { get; set; } = null!;
+        public string Contra { get; set; } = null!;
+    }
 }

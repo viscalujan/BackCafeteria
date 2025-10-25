@@ -1,19 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using CafeteriaAPI.Models;
 
-namespace BackCafeteria.Models;
-
-public partial class Producto
+namespace BackCafeteria.Models
 {
-    public int IdProducto { get; set; }
+    public class Producto
+    {
+        public int Id { get; set; }
+        public string Nombre { get; set; } = null!;
+        public decimal Precio { get; set; }
 
-    public string NombreProducto { get; set; } = null!;
-
-    public decimal PrecioProducto { get; set; }
-
-    public int CantidadProducto { get; set; }
-
-    public virtual ICollection<PedidoDetalle> PedidoDetalles { get; set; } = new List<PedidoDetalle>();
-
-    public virtual ICollection<VentaDetalle> VentaDetalles { get; set; } = new List<VentaDetalle>();
+        public virtual ICollection<VentaDetalle> VentaDetalles { get; set; } = new List<VentaDetalle>();
+    }
 }

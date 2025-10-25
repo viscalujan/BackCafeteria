@@ -1,5 +1,4 @@
-﻿using BackCafeteria.Models;
-using CafeteriaAPI.Models;
+﻿
 using Microsoft.EntityFrameworkCore;
 
 namespace BackCafeteria.Models
