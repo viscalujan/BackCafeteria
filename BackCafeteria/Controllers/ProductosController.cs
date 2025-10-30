@@ -29,6 +29,7 @@ namespace BackCafeteria.Controllers
             return Ok(producto);
         }
 
+
         [HttpPut("{id}")]
         public IActionResult ActualizarProducto(int id, [FromBody] Producto productoUpdate)
         {
