@@ -26,13 +26,13 @@ namespace BackCafeteria.Models
         public string? RolUsuario { get; set; }
 
         [Column("huella")]
-        public byte[]? Huella { get; set; }
+        public string? Huella { get; set; }  // Cambiado a string
 
         [NotMapped]
         public string? HuellaBase64
         {
-            get => Huella != null ? Convert.ToBase64String(Huella) : null;
-            set => Huella = !string.IsNullOrEmpty(value) ? Convert.FromBase64String(value) : null;
+            get => Huella;
+            set => Huella = value;
         }
 
         [Column("credito")]
@@ -42,6 +42,7 @@ namespace BackCafeteria.Models
         public string? Codigqrtexto { get; set; }
 
         public virtual ICollection<Venta> Ventas { get; set; } = new List<Venta>();
+        public virtual ICollection<Pedido> Pedidos { get; set; } = new List<Pedido>();  // Agregado para la relación
     }
 
     [Table("Aut")]

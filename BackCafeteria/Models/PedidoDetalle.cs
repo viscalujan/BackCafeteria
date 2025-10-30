@@ -1,17 +1,31 @@
-﻿using BackCafeteria.Models; // Agregado
-using CafeteriaAPI.Models;
-using System;
-using System.Collections.Generic;
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
-namespace BackCafeteria.Models;
-
-public partial class PedidoDetalle
+namespace BackCafeteria.Models
 {
-    public int IdPdetalles { get; set; }
-    public int FkIdPedidos { get; set; }
-    public int FkIdProducto { get; set; }
-    public int CantidadPdetalles { get; set; }
-    public decimal PrecioDetalles { get; set; }
-    public virtual Pedido FkIdPedidosNavigation { get; set; } = null!;
-    public virtual Producto FkIdProductoNavigation { get; set; } = null!;
+    [Table("PedidoDetalles")]
+    public partial class PedidoDetalle
+    {
+        [Key]
+        [Column("id_pdetalles")]
+        public int IdPdetalles { get; set; }
+
+        [Column("FK_id_pedidos")]
+        public int FkIdPedidos { get; set; }
+
+        [Column("FK_id_producto")]
+        public int FkIdProducto { get; set; }
+
+        [Column("cantidad_pdetalles")]
+        public int CantidadPdetalles { get; set; }
+
+        [Column("precio_detalles")]
+        public decimal PrecioDetalles { get; set; }
+
+        [ForeignKey("FkIdPedidos")]
+        public virtual Pedido FkIdPedidosNavigation { get; set; } = null!;
+
+        [ForeignKey("FkIdProducto")]
+        public virtual Producto FkIdProductoNavigation { get; set; } = null!;
+    }
 }

@@ -1,14 +1,30 @@
-﻿namespace BackCafeteria.Models
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace BackCafeteria.Models
 {
+    [Table("Ventas")]
     public class Venta
     {
-        public int IdVentas { get; set; } // Antes Id
+        [Key]
+        [Column("id_ventas")]
+        public int IdVentas { get; set; }
+
+        [Column("FK_id_usuario")]
         public int FkIdUsuario { get; set; }
-        public string MetodoPago { get; set; } = null!;
-        public decimal TotalVenta { get; set; }
+
+        [Column("fecha_venta")]
         public DateTime FechaVenta { get; set; }
 
+        [Column("total_venta")]
+        public decimal TotalVenta { get; set; }
+
+        [Column("metodo_pago")]
+        public string MetodoPago { get; set; } = null!;
+
+        [ForeignKey("FkIdUsuario")]
         public virtual Usuario FkIdUsuarioNavigation { get; set; } = null!;
+
         public virtual ICollection<VentaDetalle> VentaDetalles { get; set; } = new List<VentaDetalle>();
     }
 }

@@ -1,9 +1,10 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using BackCafeteria.Models;
 using BackCafeteria.Services;
+using QRCoder;  // Asegúrate de tener QRCoder instalado (NuGet)
 using System;
+using System.IO;
 using System.Text;
-using Microsoft.IdentityModel.Tokens;
 
 namespace BackCafeteria.Controllers
 {
@@ -30,10 +31,29 @@ namespace BackCafeteria.Controllers
                     // Convertimos el Base64 a byte[] para enviarlo
                     huellaParaCorreo = Convert.FromBase64String(usuario.HuellaBase64);
                 }
-                else if (usuario.Huella != null && usuario.Huella.Length > 0)
+                else if (!string.IsNullOrEmpty(usuario.Huella))
                 {
-                    // Si ya está como byte[], lo usamos directamente
-                    huellaParaCorreo = usuario.Huella;
+                    // Si Huella es una cadena Base64, conviértela
+                    try
+                    {
+                        huellaParaCorreo = Convert.FromBase64String(usuario.Huella);
+                    }
+                    catch (FormatException)
+                    {
+                        // Si no es Base64 válido, trata como texto plano y genera un QR simple
+                        string mensajeQR = usuario.Huella;
+                        using (var qrGenerator = new QRCodeGenerator())
+                        {
+                            var qrData = qrGenerator.CreateQrCode(mensajeQR, QRCodeGenerator.ECCLevel.Q);
+                            using (var qrCode = new QRCode(qrData))
+                            using (var bitmap = qrCode.GetGraphic(20))
+                            using (var ms = new MemoryStream())
+                            {
+                                bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                                huellaParaCorreo = ms.ToArray();
+                            }
+                        }
+                    }
                 }
                 else
                 {
@@ -50,9 +70,5 @@ namespace BackCafeteria.Controllers
                 return BadRequest(new { message = ex.Message });
             }
         }
-
     }
-
 }
-
-

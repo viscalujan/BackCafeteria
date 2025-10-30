@@ -4,7 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using BackCafeteria.Models;
+using BackCafeteria.Models;  // Asegúrate de que los modelos estén importados
 using BCrypt.Net;
 
 namespace BackCafeteria.Controllers
@@ -43,7 +43,7 @@ namespace BackCafeteria.Controllers
                 {
                     token,
                     rol = "alumno",
-                    numeroControl = alumno.NumeroControl
+                    numeroControl = alumno.NumeroControl  // Ahora es string, compatible
                 });
             }
 
