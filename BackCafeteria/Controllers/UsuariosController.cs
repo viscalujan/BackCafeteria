@@ -59,6 +59,60 @@ namespace BackCafeteria.Controllers
             return Ok(new { mensaje = "Usuario registrado correctamente.", usuarioId = usuario.IdUsuario });
         }
 
+        // ================= POST: Aumentar crédito =================
+        [HttpPost("aumentar-credito")]
+        public async Task<IActionResult> AumentarCredito(AumentoCreditoDTO dto)
+        {
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.NumeroControl == dto.NumeroControl);
+
+            if (usuario == null)
+                return NotFound("Usuario no encontrado.");
+
+            // 🔹 Actualizar crédito
+            usuario.Credito += dto.Cantidad;
+
+            // 🔹 Registrar historial
+            var historial = new HistorialCredito
+            {
+                NumeroControlAfectado = usuario.NumeroControl,
+                Monto = dto.Cantidad,
+                FechaMovimiento = DateTime.Now,
+                AutCorreo = "aut@correo.com"
+            };
+
+            _context.HistorialCreditos!.Add(historial);
+
+            // 🔹 Guardar cambios en un solo SaveChanges
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                mensaje = "Crédito aumentado",
+                creditoActual = usuario.Credito
+            });
+        }
+
+        // ================= GET: Crédito actual de un usuario =================
+        [HttpGet("credito/usuario/{numeroControl}")]
+        public async Task<IActionResult> ObtenerCredito(string numeroControl)
+        {
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);
+
+            if (usuario == null)
+                return NotFound("Usuario no encontrado.");
+
+            return Ok(new
+            {
+                idUsuario = usuario.IdUsuario,
+                nombreUsuario = usuario.NombreUsuario,
+                correoUsuario = usuario.CorreoUsuario,
+                numeroControl = usuario.NumeroControl,
+                credito = usuario.Credito
+            });
+        }
+
         // ================= GET: Listar usuarios =================
         [HttpGet("listar-usuarios")]
         public async Task<ActionResult<IEnumerable<UsuarioCreateDTO>>> ListarUsuarios()
@@ -99,34 +153,6 @@ namespace BackCafeteria.Controllers
             });
         }
 
-        // ================= POST: Aumentar crédito =================
-        [HttpPost("aumentar-credito")]
-        public async Task<IActionResult> AumentarCredito([FromBody] AumentoCreditoDTO dto)
-        {
-            if (dto.Cantidad < 50)
-                return BadRequest("La cantidad debe ser al menos 50.");
-
-            var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.NumeroControl == dto.NumeroControl);
-            if (usuario == null)
-                return NotFound("Usuario no encontrado.");
-
-            usuario.Credito += dto.Cantidad;
-
-            // 🔹 Solo usamos columnas que existen en DB
-            var historial = new HistorialCredito
-            {
-                NumeroControlAfectado = usuario.NumeroControl,
-                Monto = dto.Cantidad,
-                FechaMovimiento = DateTime.Now,
-                AutCorreo = "Sistema"
-            };
-            _context.HistorialCreditos!.Add(historial);
-            await _context.SaveChangesAsync();
-
-
-            return Ok(new { mensaje = "Crédito aumentado correctamente.", creditoActual = usuario.Credito });
-        }
-
         // ================= GET: Historial de crédito general =================
         [HttpGet("historial-credito")]
         public async Task<IActionResult> ObtenerHistorialCreditoGeneral()
@@ -162,17 +188,6 @@ namespace BackCafeteria.Controllers
                 .ToListAsync();
 
             return Ok(historial);
-        }
-
-        // ================= GET: Crédito actual de un usuario =================
-        [HttpGet("credito/usuario/{numeroControl}")]
-        public async Task<IActionResult> ObtenerCredito(string numeroControl)
-        {
-            var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);
-            if (usuario == null)
-                return NotFound("Usuario no encontrado.");
-
-            return Ok(new { credito = usuario.Credito });
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿namespace BackCafeteria.Models
+﻿namespace BackCafeteria.DTOs
 {
     public class AumentoCreditoDTO
     {

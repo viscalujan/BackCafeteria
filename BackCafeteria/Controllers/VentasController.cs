@@ -5,12 +5,9 @@ using CafeteriaAPI.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ZXing;
-using ZXing.Common;
-using System.Drawing;
-using System.IO;
-using ZXing.Windows.Compatibility;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -35,6 +32,7 @@ public class VentasController : ControllerBase
         decimal total = 0m;
         var detallesVenta = new List<VentaDetalle>();
 
+        // 🔹 Calcular total y restar stock
         foreach (var item in dto.Detalles)
         {
             var producto = await _context.Productos.FindAsync(item.ProductoId);
@@ -45,7 +43,6 @@ public class VentasController : ControllerBase
                 return BadRequest($"Stock insuficiente para el producto {producto.Nombre}.");
 
             producto.CantidadProducto -= item.Cantidad;
-
             decimal subtotal = producto.Precio * item.Cantidad;
             total += subtotal;
 
@@ -62,24 +59,21 @@ public class VentasController : ControllerBase
 
         if (metodo == "credito")
         {
-            if (string.IsNullOrWhiteSpace(dto.HashQR))
-                return BadRequest("El hash del QR es obligatorio para pagos con crédito.");
+            if (string.IsNullOrWhiteSpace(dto.HashQR) && string.IsNullOrWhiteSpace(dto.NumeroDeControl))
+                return BadRequest("El hash del QR o el número de control es obligatorio para pagos con crédito.");
 
-            usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.CodigoQRTexto == dto.HashQR || u.NumeroControl == dto.NumeroDeControl);
+            usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.CodigoQRTexto == dto.HashQR || u.NumeroControl == dto.NumeroDeControl);
+
             if (usuario == null)
                 return NotFound("QR no válido o usuario no encontrado.");
 
             if (usuario.Credito < total)
                 return BadRequest("Crédito insuficiente.");
 
-            // 📧 Enviar correo de confirmación (ajustado a tu EmailService)
-            string resumen = await _emailService.GenerarResumenVentaAsync(usuario.IdUsuario);
-            // Aquí podrías enviar correo si lo implementas
-            // await _emailService.EnviarCorreoConQR(usuario.CorreoUsuario, qrBytes);
-
             usuario.Credito -= total;
 
-            // Registrar en historial (disminución del comprador)
+            // Registrar en historial del comprador
             _context.HistorialCreditos.Add(new HistorialCredito
             {
                 NumeroControlAfectado = usuario.NumeroControl,
@@ -88,8 +82,10 @@ public class VentasController : ControllerBase
                 AutCorreo = "Sistema-VentaCredito"
             });
 
-            // Buscar o crear usuario “liquidacion”
-            var usuarioLiquidacion = await _context.Usuarios.FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
+            // Usuario “liquidacion”
+            var usuarioLiquidacion = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
+
             if (usuarioLiquidacion == null)
             {
                 usuarioLiquidacion = new Usuario
@@ -99,16 +95,16 @@ public class VentasController : ControllerBase
                     NumeroControl = "liquidacion",
                     RolUsuario = "0",
                     Credito = 0,
-                    Huella = null,
-                    CodigoQRTexto = ""
+                    CodigoQRTexto = "",
+                    ContraUsuario = "123456" // ⚡ Valor obligatorio agregado
                 };
                 _context.Usuarios.Add(usuarioLiquidacion);
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(); // Guardar liquidación si se creó nuevo
             }
 
             usuarioLiquidacion.Credito += total;
 
-            // Registrar aumento en historial del usuario "liquidacion"
+            // Historial del usuario "liquidacion"
             _context.HistorialCreditos.Add(new HistorialCredito
             {
                 NumeroControlAfectado = "liquidacion",
@@ -125,27 +121,27 @@ public class VentasController : ControllerBase
         var venta = new Venta
         {
             MetodoPago = metodo,
-            FkIdUsuario = usuario?.IdUsuario ?? 0,
+            FkIdUsuario = usuario?.IdUsuario ?? dto.FkIdUsuario,
             TotalVenta = total,
             FechaVenta = DateTime.Now,
             VentaDetalles = detallesVenta
         };
 
         _context.Ventas.Add(venta);
+
+        // 🔹 Guardar cambios en usuarios, historial y venta en un solo SaveChanges
         await _context.SaveChangesAsync();
 
-        var ticket = new
+        return Ok(new
         {
-            Id = venta.IdVentas,
+            IdVenta = venta.IdVentas,
             Total = venta.TotalVenta,
             Fecha = venta.FechaVenta,
-            Metodo = metodo
-        };
-
-        return Ok(ticket);
+            MetodoPago = venta.MetodoPago
+        });
     }
 
-    // 🔹 GET por número de control
+
     [HttpGet("numeroControl/{numero}")]
     public async Task<ActionResult<Usuario>> GetUsuarioPorNumeroControl(string numero)
     {
@@ -156,13 +152,13 @@ public class VentasController : ControllerBase
         return Ok(usuario);
     }
 
-    // 🔹 Reporte general
     [HttpGet("/api/reportes/ventas")]
-    public async Task<ActionResult> GetVentasFiltradas([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
+    public async Task<ActionResult<List<VentaResponseDTO>>> GetVentasFiltradas([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
     {
         var query = _context.Ventas
             .Include(v => v.FkIdUsuarioNavigation)
             .Include(v => v.VentaDetalles)
+                .ThenInclude(d => d.FkIdProductoNavigation)
             .AsQueryable();
 
         if (desde.HasValue)
@@ -173,16 +169,29 @@ public class VentasController : ControllerBase
 
         var ventas = await query
             .OrderByDescending(v => v.FechaVenta)
+            .Select(v => new VentaResponseDTO
+            {
+                VentaId = v.IdVentas,
+                UsuarioId = v.FkIdUsuarioNavigation.IdUsuario,
+                MetodoPago = v.MetodoPago,
+                TotalVenta = v.TotalVenta,
+                FechaVenta = v.FechaVenta,
+                Detalles = v.VentaDetalles.Select(d => new VentaDetalleResponseDTO
+                {
+                    ProductoId = d.FkIdProducto,
+                    NombreProducto = d.FkIdProductoNavigation.Nombre,
+                    CantidadProducto = d.CantidadProducto,
+                    PrecioUnitario = d.PrecioUnitario
+                }).ToList()
+            })
             .ToListAsync();
 
         return Ok(ventas);
     }
 
-    // 🔹 Reporte detallado
+
     [HttpGet("reporte-detallado")]
-    public async Task<ActionResult> GetReporteDetallado(
-        [FromQuery] DateTime? desde,
-        [FromQuery] DateTime? hasta)
+    public async Task<ActionResult> GetReporteDetallado([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
     {
         hasta ??= DateTime.Today;
         desde ??= hasta.Value.AddDays(-30);

@@ -39,18 +39,19 @@ namespace BackCafeteria.Models
         [NotMapped]
         public string? HuellaBase64
         {
-            get => Huella; // si tu código usa HuellaBase64, devuelve Huella
+            get => Huella;
             set => Huella = value;
         }
 
-        public virtual ICollection<HistorialCredito>? HistorialCreditos { get; set; }
+        // 🔹 Navegación a ventas y pedidos
         public virtual ICollection<Venta>? Ventas { get; set; }
         public virtual ICollection<Pedido>? Pedidos { get; set; }
+
+        // 🔹 Eliminada navegación a HistorialCredito porque la tabla no tiene FK
+        // public virtual ICollection<HistorialCredito>? HistorialCreditos { get; set; }
     }
 
-
-
-[Table("Aut")]
+    [Table("Aut")]
     public class Aut
     {
         [Key]
