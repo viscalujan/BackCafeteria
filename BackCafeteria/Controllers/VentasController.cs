@@ -65,7 +65,7 @@ public class VentasController : ControllerBase
             if (string.IsNullOrWhiteSpace(dto.HashQR))
                 return BadRequest("El hash del QR es obligatorio para pagos con crédito.");
 
-            usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.CodigoQRTexto == dto.HashQR);
+            usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.CodigoQRTexto == dto.HashQR || u.NumeroControl == dto.NumeroDeControl);
             if (usuario == null)
                 return NotFound("QR no válido o usuario no encontrado.");
 

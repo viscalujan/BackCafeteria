@@ -74,13 +74,14 @@ namespace BackCafeteria.Models
                 .HasOne(pd => pd.FkIdProductoNavigation)
                 .WithMany(p => p.PedidoDetalles)
                 .HasForeignKey(pd => pd.FkIdProducto);
+            modelBuilder.Entity<HistorialCredito>(entity =>
+            {
+                entity.HasKey(h => h.IdHistorialCredito);
 
-            // 🔹 Relación HistorialCredito (basada en tu modelo actual)
-            modelBuilder.Entity<HistorialCredito>()
-                .HasOne(h => h.FkIdUsuarioNavigation)
-                .WithMany(u => u.HistorialCreditos)
-                .HasForeignKey(h => h.FkIdUsuario);
-
+                // ⚠️ Esto desactiva cualquier relación automática
+                entity.Ignore(nameof(HistorialCredito.Cantidad));
+                entity.Ignore(nameof(HistorialCredito.Fecha));
+            });
 
         }
     }

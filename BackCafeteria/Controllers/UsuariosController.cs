@@ -22,6 +22,9 @@ namespace BackCafeteria.Controllers
         [HttpPost("crear-usuario")]
         public async Task<IActionResult> PostUsuario([FromBody] UsuarioCreateDTO nuevo)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
             if (await _context.Usuarios.AnyAsync(u => u.NumeroControl == nuevo.NumeroControl))
                 return BadRequest("Ya existe un usuario con ese número de control.");
 
@@ -33,25 +36,25 @@ namespace BackCafeteria.Controllers
                 NombreUsuario = nuevo.Nombre,
                 CorreoUsuario = nuevo.Correo,
                 NumeroControl = nuevo.NumeroControl,
-                RolUsuario = nuevo.Rol,       // rol recibido desde DTO
-                ContraUsuario = nuevo.Contra, // contraseña
-                Credito = 50                  // crédito inicial
+                RolUsuario = nuevo.Rol,
+                ContraUsuario = nuevo.Contra,
+                Credito = nuevo.Credito,
+                CodigoQRTexto = nuevo.CodigoQRTexto
             };
 
             _context.Usuarios.Add(usuario);
-            await _context.SaveChangesAsync(); // Guardamos primero para tener IdUsuario
+            await _context.SaveChangesAsync();
 
             // Registrar historial inicial
             var historial = new HistorialCredito
             {
+                NumeroControlAfectado = usuario.NumeroControl,
                 Monto = usuario.Credito,
                 FechaMovimiento = DateTime.Now,
-                AutCorreo = "Sistema",
-                NumeroControlAfectado = usuario.NumeroControl
+                AutCorreo = "Sistema"
             };
             _context.HistorialCreditos!.Add(historial);
             await _context.SaveChangesAsync();
-
 
             return Ok(new { mensaje = "Usuario registrado correctamente.", usuarioId = usuario.IdUsuario });
         }
@@ -109,6 +112,7 @@ namespace BackCafeteria.Controllers
 
             usuario.Credito += dto.Cantidad;
 
+            // 🔹 Solo usamos columnas que existen en DB
             var historial = new HistorialCredito
             {
                 NumeroControlAfectado = usuario.NumeroControl,
@@ -117,8 +121,8 @@ namespace BackCafeteria.Controllers
                 AutCorreo = "Sistema"
             };
             _context.HistorialCreditos!.Add(historial);
-
             await _context.SaveChangesAsync();
+
 
             return Ok(new { mensaje = "Crédito aumentado correctamente.", creditoActual = usuario.Credito });
         }
@@ -129,25 +133,39 @@ namespace BackCafeteria.Controllers
         {
             var historial = await _context.HistorialCreditos!
                 .OrderByDescending(h => h.FechaMovimiento)
+                .Select(h => new
+                {
+                    h.NumeroControlAfectado,
+                    h.Monto,
+                    h.FechaMovimiento,
+                    h.AutCorreo
+                })
                 .ToListAsync();
 
             return Ok(historial);
         }
 
         // ================= GET: Historial de crédito por usuario =================
-        [HttpGet("historial-credito por usuario/{numeroControl}")]
+        [HttpGet("historial-credito/usuario/{numeroControl}")]
         public async Task<IActionResult> ObtenerHistorialCreditoUsuario(string numeroControl)
         {
             var historial = await _context.HistorialCreditos!
                 .Where(h => h.NumeroControlAfectado == numeroControl)
                 .OrderByDescending(h => h.FechaMovimiento)
+                .Select(h => new
+                {
+                    h.NumeroControlAfectado,
+                    h.Monto,
+                    h.FechaMovimiento,
+                    h.AutCorreo
+                })
                 .ToListAsync();
 
             return Ok(historial);
         }
 
         // ================= GET: Crédito actual de un usuario =================
-        [HttpGet("credito de 1 usuario/{numeroControl}")]
+        [HttpGet("credito/usuario/{numeroControl}")]
         public async Task<IActionResult> ObtenerCredito(string numeroControl)
         {
             var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);

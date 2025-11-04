@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-
+using BackCafeteria.DTOs;
 namespace BackCafeteria.Models
 {
     [Table("Productos")]
