@@ -1,8 +1,9 @@
-using BackCafeteria.Models;
+﻿using BackCafeteria.Models;
 using CafeteriaAPI.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,9 +21,44 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
-// JWT
+// ================== SWAGGER ==================
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "BackCafeteria API",
+        Version = "v1",
+        Description = "API protegida con JWT para la aplicación de cafetería"
+    });
+
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Introduce el token JWT con el prefijo 'Bearer'. Ejemplo: **Bearer {tu_token}**"
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+// ================== JWT ==================
 var secretKey = builder.Configuration["settings:secretkey"];
 var keyBytes = Encoding.UTF8.GetBytes(secretKey);
 
@@ -44,12 +80,12 @@ builder.Services.AddAuthentication(config =>
     };
 });
 
-// DB Context
+// ================== DB Context ==================
 builder.Services.AddDbContext<CafeteriaDbv2Context>(options =>
     options.UseMySql(builder.Configuration.GetConnectionString("CafeteriaDBv2"),
         new MySqlServerVersion(new Version(8, 4, 6))));
 
-// ================== SESI�N ==================
+// ================== SESIÓN ==================
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
@@ -60,18 +96,18 @@ builder.Services.AddSession(options =>
 
 var app = builder.Build();
 
-// Swagger
+// ================== MIDDLEWARE ==================
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 app.UseCors(corsPolicyName);
 
-// ================== SESI�N ==================
 app.UseSession();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
 app.Run();

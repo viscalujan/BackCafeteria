@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BackCafeteria.Models
@@ -22,11 +23,25 @@ namespace BackCafeteria.Models
         [Column("AutCorreo")]
         public string? AutCorreo { get; set; }
 
-        // Si quieres mantener la relación, usa el mismo tipo que la clave primaria de Usuario
-        [Column("FK_id_usuario")]
+        // 🔹 Eliminamos la columna para EF (no existe en DB)
+        [NotMapped]
         public int? FkIdUsuario { get; set; }
 
-        [ForeignKey("FkIdUsuario")]
+        [NotMapped]
         public virtual Usuario? FkIdUsuarioNavigation { get; set; }
+
+        [NotMapped]
+        public decimal Cantidad
+        {
+            get => Monto;
+            set => Monto = value;
+        }
+
+        [NotMapped]
+        public DateTime Fecha
+        {
+            get => FechaMovimiento;
+            set => FechaMovimiento = value;
+        }
     }
 }

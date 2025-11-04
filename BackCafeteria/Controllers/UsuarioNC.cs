@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using BackCafeteria.Models;
 using BackCafeteria.Services;
-using QRCoder;  // Asegúrate de tener QRCoder instalado (NuGet)
+using QRCoder;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -22,27 +22,78 @@ namespace BackCafeteria.Controllers
             _context = context;
         }
 
-        // 1️⃣ Obtener historial de crédito del usuario
+        // ✅ POST: api/UsuarioNC/EnviarQR
+        [HttpPost("EnviarQR")]
+        public IActionResult EnviarQR([FromBody] Usuario usuario)
+        {
+            try
+            {
+                if (usuario == null)
+                    return BadRequest("Datos del usuario no válidos.");
+
+                if (string.IsNullOrEmpty(usuario.CorreoUsuario))
+                    return BadRequest("El correo del usuario es obligatorio.");
+
+                byte[] qrBytes;
+
+                // 🔹 Si la huella ya viene en Base64 (cadena), la convertimos directamente
+                if (!string.IsNullOrEmpty(usuario.HuellaBase64))
+                {
+                    qrBytes = Convert.FromBase64String(usuario.HuellaBase64);
+                }
+                else if (!string.IsNullOrEmpty(usuario.Huella))
+                {
+                    // 🔹 Generar código QR con el valor de la huella
+                    using (var qrGenerator = new QRCodeGenerator())
+                    {
+                        var qrData = qrGenerator.CreateQrCode(usuario.Huella, QRCodeGenerator.ECCLevel.Q);
+                        using (var qrCode = new QRCode(qrData))
+                        using (var bitmap = qrCode.GetGraphic(20))
+                        using (var ms = new MemoryStream())
+                        {
+                            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                            qrBytes = ms.ToArray();
+                        }
+                    }
+                }
+                else
+                {
+                    return BadRequest("No se proporcionó una huella válida.");
+                }
+
+                // 🔹 Enviar correo con el QR adjunto
+                EmailService.EnviarCorreoConQR(usuario.CorreoUsuario, qrBytes);
+
+                return Ok(new { message = "Correo con QR enviado correctamente." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "Error al enviar QR: " + ex.Message });
+            }
+        }
+
+        // ✅ GET: api/UsuarioNC/historial-credito/{numeroControl}
         [HttpGet("historial-credito/{numeroControl}")]
         public async Task<IActionResult> ObtenerHistorialCreditoUsuario(string numeroControl)
         {
             var historial = await _context.HistorialCreditos
-                .Where(h => h.FkIdUsuarioNavigation.NumeroControl == numeroControl)
+                .Where(h => h.NumeroControlAfectado == numeroControl)
                 .OrderByDescending(h => h.FechaMovimiento)
                 .ToListAsync();
 
             if (!historial.Any())
+            {
                 return NotFound($"No se encontró historial para el número de control: {numeroControl}");
+            }
 
             return Ok(historial);
         }
 
-        // 2️⃣ Obtener crédito actual del usuario
+        // ✅ GET: api/UsuarioNC/credito/{numeroControl}
         [HttpGet("credito/{numeroControl}")]
         public async Task<IActionResult> ObtenerCredito(string numeroControl)
         {
-            var usuario = await _context.Usuarios
-                .FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);
+            var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);
 
             if (usuario == null)
                 return NotFound("Usuario no encontrado.");
@@ -50,81 +101,30 @@ namespace BackCafeteria.Controllers
             return Ok(new { credito = usuario.Credito });
         }
 
-        // 3️⃣ Obtener QR del usuario
+        // ✅ GET: api/UsuarioNC/qr/{numeroControl}
         [HttpGet("qr/{numeroControl}")]
         public async Task<IActionResult> ObtenerCodigoQR(string numeroControl)
         {
             var usuario = await _context.Usuarios
                 .Where(u => u.NumeroControl == numeroControl)
-                .Select(u => new { u.Huella, u.Codigqrtexto })
+                .Select(u => new { u.Huella, u.CodigoQRTexto })
                 .FirstOrDefaultAsync();
 
             if (usuario == null || usuario.Huella == null)
                 return NotFound("QR no encontrado para este usuario.");
 
-            return File(usuario.Huella, "image/png", $"QR_{numeroControl}.png");
-        }
-
-        // 4️⃣ Enviar QR por correo
-        [HttpPost("EnviarQR")]
-        public IActionResult EnviarQR([FromBody] EnviarQRDTO dto)
-        {
+            // Convertir la huella (si es base64) en bytes para devolver como imagen
+            byte[] qrBytes;
             try
             {
-                if (string.IsNullOrEmpty(dto.Correo))
-                    return BadRequest("Correo no proporcionado.");
-
-                byte[] huellaParaCorreo;
-
-                if (!string.IsNullOrEmpty(dto.HuellaBase64))
-                {
-                    huellaParaCorreo = Convert.FromBase64String(dto.HuellaBase64);
-                }
-                else if (!string.IsNullOrEmpty(dto.Huella))
-                {
-                    try
-                    {
-                        huellaParaCorreo = Convert.FromBase64String(dto.Huella);
-                    }
-                    catch (FormatException)
-                    {
-                        string mensajeQR = dto.Huella;
-                        using (var qrGenerator = new QRCodeGenerator())
-                        {
-                            var qrData = qrGenerator.CreateQrCode(mensajeQR, QRCodeGenerator.ECCLevel.Q);
-                            using (var qrCode = new QRCode(qrData))
-                            using (var bitmap = qrCode.GetGraphic(20))
-                            using (var ms = new MemoryStream())
-                            {
-                                bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                                huellaParaCorreo = ms.ToArray();
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    return BadRequest("No se proporcionó huella válida para enviar por correo.");
-                }
-
-                // 🔹 Ajuste: Solo enviamos 2 argumentos según tu servicio actual
-                EmailService.EnviarCorreoConQR(dto.Correo, huellaParaCorreo);
-
-                return Ok(new { message = "Correo enviado correctamente" });
+                qrBytes = Convert.FromBase64String(usuario.Huella);
             }
-            catch (Exception ex)
+            catch
             {
-                return BadRequest(new { message = ex.Message });
+                return BadRequest("La huella no es una imagen válida en Base64.");
             }
-        }
-    }
 
-    // DTO recomendado para EnviarQR
-    public class EnviarQRDTO
-    {
-        public string Correo { get; set; } = null!;
-        public string NombreUsuario { get; set; } = null!;
-        public string? HuellaBase64 { get; set; }
-        public string? Huella { get; set; }
+            return File(qrBytes, "image/png", $"QR_{numeroControl}.png");
+        }
     }
 }

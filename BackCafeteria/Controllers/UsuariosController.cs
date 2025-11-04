@@ -1,7 +1,5 @@
 ﻿using BackCafeteria.DTOs;
 using BackCafeteria.Models;
-using CafeteriaAPI.DTOs;
-using CafeteriaAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +19,7 @@ namespace BackCafeteria.Controllers
         }
 
         // ================= POST: Crear usuario =================
-        [HttpPost]
+        [HttpPost("crear-usuario")]
         public async Task<IActionResult> PostUsuario([FromBody] UsuarioCreateDTO nuevo)
         {
             if (await _context.Usuarios.AnyAsync(u => u.NumeroControl == nuevo.NumeroControl))
@@ -35,37 +33,42 @@ namespace BackCafeteria.Controllers
                 NombreUsuario = nuevo.Nombre,
                 CorreoUsuario = nuevo.Correo,
                 NumeroControl = nuevo.NumeroControl,
-                Credito = 50, // Crédito inicial mínimo
+                RolUsuario = nuevo.Rol,       // rol recibido desde DTO
+                ContraUsuario = nuevo.Contra, // contraseña
+                Credito = 50                  // crédito inicial
             };
 
             _context.Usuarios.Add(usuario);
+            await _context.SaveChangesAsync(); // Guardamos primero para tener IdUsuario
 
-            // Registrar movimiento inicial en HistorialCredito
+            // Registrar historial inicial
             var historial = new HistorialCredito
             {
-                FkIdUsuario = usuario.IdUsuario,
                 Monto = usuario.Credito,
-                FechaMovimiento = DateTime.Now
+                FechaMovimiento = DateTime.Now,
+                AutCorreo = "Sistema",
+                NumeroControlAfectado = usuario.NumeroControl
             };
             _context.HistorialCreditos!.Add(historial);
-
             await _context.SaveChangesAsync();
 
-            return Ok(new { mensaje = "Usuario registrado correctamente." });
+
+            return Ok(new { mensaje = "Usuario registrado correctamente.", usuarioId = usuario.IdUsuario });
         }
 
         // ================= GET: Listar usuarios =================
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<UsuarioDTO>>> ListarUsuarios()
+        [HttpGet("listar-usuarios")]
+        public async Task<ActionResult<IEnumerable<UsuarioCreateDTO>>> ListarUsuarios()
         {
             var usuarios = await _context.Usuarios
-                .Select(u => new UsuarioDTO
+                .Select(u => new UsuarioCreateDTO
                 {
                     Id = u.IdUsuario,
                     Nombre = u.NombreUsuario!,
                     Correo = u.CorreoUsuario!,
                     NumeroControl = u.NumeroControl!,
-                    Credito = u.Credito
+                    Credito = u.Credito,
+                    Rol = u.RolUsuario
                 })
                 .ToListAsync();
 
@@ -74,7 +77,7 @@ namespace BackCafeteria.Controllers
 
         // ================= GET: Obtener usuario por número de control =================
         [HttpGet("numeroControl/{numeroControl}")]
-        public async Task<ActionResult<UsuarioDTO>> GetUsuarioPorNumeroControl(string numeroControl)
+        public async Task<ActionResult<UsuarioCreateDTO>> GetUsuarioPorNumeroControl(string numeroControl)
         {
             var usuario = await _context.Usuarios
                 .FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);
@@ -82,13 +85,14 @@ namespace BackCafeteria.Controllers
             if (usuario == null)
                 return NotFound("Usuario no encontrado.");
 
-            return Ok(new UsuarioDTO
+            return Ok(new UsuarioCreateDTO
             {
                 Id = usuario.IdUsuario,
                 Nombre = usuario.NombreUsuario!,
                 Correo = usuario.CorreoUsuario!,
                 NumeroControl = usuario.NumeroControl!,
-                Credito = usuario.Credito
+                Credito = usuario.Credito,
+                Rol = usuario.RolUsuario
             });
         }
 
@@ -105,18 +109,18 @@ namespace BackCafeteria.Controllers
 
             usuario.Credito += dto.Cantidad;
 
-            // Registrar en historial
             var historial = new HistorialCredito
             {
-                FkIdUsuario = usuario.IdUsuario,
+                NumeroControlAfectado = usuario.NumeroControl,
                 Monto = dto.Cantidad,
-                FechaMovimiento = DateTime.Now
+                FechaMovimiento = DateTime.Now,
+                AutCorreo = "Sistema"
             };
             _context.HistorialCreditos!.Add(historial);
 
             await _context.SaveChangesAsync();
 
-            return Ok(new { mensaje = "Crédito aumentado correctamente." });
+            return Ok(new { mensaje = "Crédito aumentado correctamente.", creditoActual = usuario.Credito });
         }
 
         // ================= GET: Historial de crédito general =================
@@ -131,23 +135,19 @@ namespace BackCafeteria.Controllers
         }
 
         // ================= GET: Historial de crédito por usuario =================
-        [HttpGet("historial-credito/{numeroControl}")]
+        [HttpGet("historial-credito por usuario/{numeroControl}")]
         public async Task<IActionResult> ObtenerHistorialCreditoUsuario(string numeroControl)
         {
-            var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);
-            if (usuario == null)
-                return NotFound("Usuario no encontrado.");
-
             var historial = await _context.HistorialCreditos!
-                .Where(h => h.FkIdUsuario == usuario.IdUsuario)
+                .Where(h => h.NumeroControlAfectado == numeroControl)
                 .OrderByDescending(h => h.FechaMovimiento)
                 .ToListAsync();
 
             return Ok(historial);
         }
 
-        // ================= GET: Obtener crédito actual de un usuario =================
-        [HttpGet("credito/{numeroControl}")]
+        // ================= GET: Crédito actual de un usuario =================
+        [HttpGet("credito de 1 usuario/{numeroControl}")]
         public async Task<IActionResult> ObtenerCredito(string numeroControl)
         {
             var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);
@@ -155,20 +155,6 @@ namespace BackCafeteria.Controllers
                 return NotFound("Usuario no encontrado.");
 
             return Ok(new { credito = usuario.Credito });
-        }
-
-        // ================= GET: Verificar existencia de usuario por número de control =================
-        [HttpGet("ExisteNumeroControl")]
-        public async Task<ActionResult<bool>> ExisteNumeroControl(string numeroControl)
-        {
-            return await _context.Usuarios.AnyAsync(u => u.NumeroControl == numeroControl);
-        }
-
-        // ================= GET: Verificar existencia de usuario por correo =================
-        [HttpGet("ExisteCorreo")]
-        public async Task<ActionResult<bool>> ExisteCorreo(string correo)
-        {
-            return await _context.Usuarios.AnyAsync(u => u.CorreoUsuario == correo);
         }
     }
 }

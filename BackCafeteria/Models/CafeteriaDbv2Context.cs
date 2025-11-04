@@ -1,4 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using BackCafeteria.Models;
+using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BackCafeteria.Models
 {
@@ -8,35 +10,35 @@ namespace BackCafeteria.Models
             : base(options)
         {
         }
-        public DbSet<Aut> Aut { get; set; } = null!;
 
+        public DbSet<Aut> Aut { get; set; } = null!;
         public DbSet<Usuario> Usuarios { get; set; } = null!;
         public DbSet<Producto> Productos { get; set; } = null!;
         public DbSet<Venta> Ventas { get; set; } = null!;
         public DbSet<VentaDetalle> VentaDetalles { get; set; } = null!;
-        public DbSet<HistorialCredito>? HistorialCreditos { get; set; } // Asegúrate de tener una clase HistorialCredito
+        public virtual DbSet<HistorialCredito> HistorialCreditos { get; set; }
+
+
+        // Si tienes pedidos y estados:
+        public DbSet<Pedido> Pedidos { get; set; } = null!;
+        public DbSet<PedidoDetalle> PedidoDetalles { get; set; } = null!;
+        public DbSet<EstadoPedido> EstadosPedido { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // Claves primarias
+            // Claves
             modelBuilder.Entity<Aut>().HasKey(a => a.IdAut);
-            modelBuilder.Entity<Usuario>()
-             .HasIndex(u => u.NumeroControl)
-             .IsUnique(); // Asegurar que NumeroControl sea único
+            modelBuilder.Entity<Usuario>().HasIndex(u => u.NumeroControl).IsUnique();
             modelBuilder.Entity<Producto>().HasKey(p => p.Id);
             modelBuilder.Entity<Venta>().HasKey(v => v.IdVentas);
             modelBuilder.Entity<VentaDetalle>().HasKey(vd => vd.IdVdetalle);
             modelBuilder.Entity<Pedido>().HasKey(p => p.IdPedidos);
             modelBuilder.Entity<PedidoDetalle>().HasKey(pd => pd.IdPdetalles);
             modelBuilder.Entity<EstadoPedido>().HasKey(ep => ep.IdEstado);
-            modelBuilder.Entity<HistorialCredito>()
-             .HasOne(hc => hc.FkIdUsuarioNavigation)
-             .WithMany()
-             .HasPrincipalKey(u => u.NumeroControl) // Usar NumeroControl como clave principal para esta relación
-             .HasForeignKey(hc => hc.NumeroControlAfectado)
-             .IsRequired(false);
+            modelBuilder.Entity<HistorialCredito>().HasKey(h => h.IdHistorialCredito);
+
             // Relaciones
             modelBuilder.Entity<Venta>()
                 .HasOne(v => v.FkIdUsuarioNavigation)
@@ -73,12 +75,13 @@ namespace BackCafeteria.Models
                 .WithMany(p => p.PedidoDetalles)
                 .HasForeignKey(pd => pd.FkIdProducto);
 
-            // RELACIÓN CORREGIDA para HistorialCredito
+            // 🔹 Relación HistorialCredito (basada en tu modelo actual)
             modelBuilder.Entity<HistorialCredito>()
-                .HasOne(hc => hc.FkIdUsuarioNavigation)
-                .WithMany() // Si no hay una colección en Usuario para HistorialCredito
-                .HasForeignKey(hc => hc.FkIdUsuario)
-                .IsRequired(false); // Hacerla opcional si es necesario
+                .HasOne(h => h.FkIdUsuarioNavigation)
+                .WithMany(u => u.HistorialCreditos)
+                .HasForeignKey(h => h.FkIdUsuario);
+
+
         }
     }
 }

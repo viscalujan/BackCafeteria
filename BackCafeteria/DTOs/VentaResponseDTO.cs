@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 
 namespace CafeteriaAPI.DTOs
 {
@@ -10,7 +9,6 @@ namespace CafeteriaAPI.DTOs
         public string MetodoPago { get; set; } = null!;
         public decimal TotalVenta { get; set; }
         public DateTime FechaVenta { get; set; }
-
         public List<VentaDetalleResponseDTO> Detalles { get; set; } = new();
     }
 

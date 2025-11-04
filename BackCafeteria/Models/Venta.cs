@@ -26,5 +26,13 @@ namespace BackCafeteria.Models
         public virtual Usuario FkIdUsuarioNavigation { get; set; } = null!;
 
         public virtual ICollection<VentaDetalle> VentaDetalles { get; set; } = new List<VentaDetalle>();
+
+        // 🔹 Alias para compatibilidad con el controlador
+        [NotMapped]
+        public decimal Total
+        {
+            get => TotalVenta;
+            set => TotalVenta = value;
+        }
     }
 }

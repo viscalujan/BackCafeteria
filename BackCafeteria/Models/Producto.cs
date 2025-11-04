@@ -17,9 +17,23 @@ namespace BackCafeteria.Models
         public decimal Precio { get; set; }
 
         [Column("cantidad_producto")]
-        public int CantidadProducto { get; set; }  // Nueva propiedad agregada
+        public int CantidadProducto { get; set; }
+
+        [NotMapped] // 🔹 Para compatibilidad con controladores que usan “Cantidad”
+        public int Cantidad
+        {
+            get => CantidadProducto;
+            set => CantidadProducto = value;
+        }
+
+        [NotMapped] // 🔹 Para compatibilidad con controladores que usan “NombreProducto”
+        public string NombreProducto
+        {
+            get => Nombre;
+            set => Nombre = value;
+        }
 
         public virtual ICollection<VentaDetalle> VentaDetalles { get; set; } = new List<VentaDetalle>();
-        public virtual ICollection<PedidoDetalle> PedidoDetalles { get; set; } = new List<PedidoDetalle>();  // Agregado para Pedidos
+        public virtual ICollection<PedidoDetalle> PedidoDetalles { get; set; } = new List<PedidoDetalle>();
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BackCafeteria.Models
@@ -11,41 +12,45 @@ namespace BackCafeteria.Models
         public int IdUsuario { get; set; }
 
         [Column("nombre_usuario")]
-        public string? NombreUsuario { get; set; }
+        public string NombreUsuario { get; set; } = null!;
 
         [Column("correo_usuario")]
-        public string? CorreoUsuario { get; set; }
-
-        [Column("contra_usuario")]
-        public string? ContraUsuario { get; set; }
+        public string CorreoUsuario { get; set; } = null!;
 
         [Column("numero_control")]
         public string? NumeroControl { get; set; }
 
-        [Column("rol_usuario")]
-        public string? RolUsuario { get; set; }
-
-        [Column("huella")]
-        public string? Huella { get; set; }  // Cambiado a string
-
-        [NotMapped]
-        public string? HuellaBase64
-        {
-            get => Huella;
-            set => Huella = value;
-        }
-
         [Column("credito")]
         public decimal Credito { get; set; }
 
-        [Column("codigqrtexto")]
-        public string? Codigqrtexto { get; set; }
+        [Column("huella")]
+        public string? Huella { get; set; }
 
-        public virtual ICollection<Venta> Ventas { get; set; } = new List<Venta>();
-        public virtual ICollection<Pedido> Pedidos { get; set; } = new List<Pedido>();  // Agregado para la relación
+        [Column("rol_usuario")]
+        public string? RolUsuario { get; set; }
+
+        [Column("codigqrtexto")]
+        public string? CodigoQRTexto { get; set; }
+
+        [Column("contra_usuario")]
+        public string ContraUsuario { get; set; } = null!;
+
+        // 🔹 Simulación de HuellaBase64
+        [NotMapped]
+        public string? HuellaBase64
+        {
+            get => Huella; // si tu código usa HuellaBase64, devuelve Huella
+            set => Huella = value;
+        }
+
+        public virtual ICollection<HistorialCredito>? HistorialCreditos { get; set; }
+        public virtual ICollection<Venta>? Ventas { get; set; }
+        public virtual ICollection<Pedido>? Pedidos { get; set; }
     }
 
-    [Table("Aut")]
+
+
+[Table("Aut")]
     public class Aut
     {
         [Key]
