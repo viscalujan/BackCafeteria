@@ -20,6 +20,15 @@ namespace BackCafeteria.Controllers
             var productos = _context.Productos.ToList();
             return Ok(productos);
         }
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Producto>> GetProducto(int id)
+        {
+            var producto = await _context.Productos.FindAsync(id);
+            if (producto == null) return NotFound();
+            return producto;
+        }
+
+
 
         [HttpPost]
         public IActionResult CrearProducto([FromBody] Producto producto)
