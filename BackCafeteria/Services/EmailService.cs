@@ -1,55 +1,104 @@
 ﻿using BackCafeteria.Models;
+using BackCafeteria.Services;
+using Microsoft.Extensions.Options;
+using System.Net;
+using System.Net.Mail;
 using System.Text;
 using System.Threading.Tasks;
+using System.IO;
+using System.Linq;
 
 namespace BackCafeteria.Services
 {
     public class EmailService
     {
         private readonly CafeteriaDbv2Context _context;
+        private readonly EmailSettings _settings;
 
-        public EmailService(CafeteriaDbv2Context context)
+        public EmailService(CafeteriaDbv2Context context, IOptions<EmailSettings> settings)
         {
             _context = context;
+            _settings = settings.Value;
         }
 
-        public static void EnviarCorreoConQR(string correoDestino, byte[] qrBytes)
+        // ===========================
+        // 🔧 CONFIGURACIÓN SMTP MULTISERVIDOR
+        // ===========================
+        private (string host, int port, bool enableSsl) ObtenerConfiguracionSMTP(string correo)
         {
+            if (!string.IsNullOrEmpty(_settings.SmtpServidor))
+                return (_settings.SmtpServidor, _settings.SmtpPuerto, _settings.UsarSSL);
+
+            if (correo.Contains("gmail.com"))
+                return ("smtp.gmail.com", 587, true);
+
+            if (correo.Contains("outlook.com") || correo.Contains("hotmail.com") || correo.Contains("live.com"))
+                return ("smtp.office365.com", 587, true);
+
+            if (correo.Contains("yahoo.com"))
+                return ("smtp.mail.yahoo.com", 587, true);
+
+            // 🔹 Servidor genérico si no se detecta dominio
+            return ("smtp.tuServidor.com", 587, true);
+        }
+
+        // ===========================
+        // ✉️ MÉTODO PRINCIPAL PARA ENVIAR CORREO CON QR
+        // ===========================
+        public void EnviarCorreoConQR(string correoDestino, byte[] qrBytes)
+        {
+            string remitente = _settings.CorreoRemitente;
+            string contrasena = _settings.ClaveApp;
+
+            var (host, port, ssl) = ObtenerConfiguracionSMTP(remitente);
+
             using (var ms = new MemoryStream(qrBytes))
+            using (var attachment = new Attachment(ms, "QR.png", "image/png"))
+            using (var mail = new MailMessage())
             {
-                var attachment = new System.Net.Mail.Attachment(ms, "QR.png", "image/png");
-                var mail = new System.Net.Mail.MailMessage("tucorreo@dominio.com", correoDestino)
-                {
-                    Subject = "Tu código QR",
-                    Body = "Adjunto tu código QR"
-                };
+                mail.From = new MailAddress(remitente, "Cafetería TEC");
+                mail.To.Add(correoDestino);
+                mail.Subject = "Tu código QR de acceso";
+                mail.Body = "Hola 👋,\n\nAdjuntamos tu código QR generado correctamente.\n\nSaludos,\nCafetería TEC";
                 mail.Attachments.Add(attachment);
 
-                var client = new System.Net.Mail.SmtpClient("smtp.tuServidor.com");
-                client.Send(mail);
+                using (var client = new SmtpClient(host, port))
+                {
+                    client.EnableSsl = ssl;
+                    client.UseDefaultCredentials = false;
+                    client.Credentials = new NetworkCredential(remitente, contrasena);
+                    client.Send(mail);
+                }
             }
         }
 
-        // 🔹 Método agregado para corregir error del controlador
+        // ===========================
+        // 💳 ENVÍA CORREO AL REALIZAR COMPRA CON CRÉDITO
+        // ===========================
         public async Task EnviarCorreoVentaCredito(string correoDestino, decimal totalCredito, string nombreUsuario)
         {
+            string remitente = _settings.CorreoRemitente;
+            string contrasena = _settings.ClaveApp;
+            var (host, port, ssl) = ObtenerConfiguracionSMTP(remitente);
+
             string asunto = "Compra con crédito registrada";
-            string cuerpo = $"Hola {nombreUsuario},\n\nSe ha registrado tu compra con crédito por un total de ${totalCredito}.\nGracias por tu compra.";
+            string cuerpo = $"Hola {nombreUsuario},\n\n" +
+                            $"Se ha registrado tu compra con crédito por un total de ${totalCredito:F2}.\n\n" +
+                            $"Gracias por tu compra.\n\n- Cafetería TEC";
 
-            using (var mail = new System.Net.Mail.MailMessage("tucorreo@dominio.com", correoDestino, asunto, cuerpo))
+            using (var mail = new MailMessage(remitente, correoDestino, asunto, cuerpo))
+            using (var client = new SmtpClient(host, port))
             {
-                var client = new System.Net.Mail.SmtpClient("smtp.tuServidor.com")
-                {
-                    Port = 587,
-                    Credentials = new System.Net.NetworkCredential("tucorreo@dominio.com", "tuContraseña"),
-                    EnableSsl = true
-                };
-
+                client.EnableSsl = ssl;
+                client.UseDefaultCredentials = false;
+                client.Credentials = new NetworkCredential(remitente, contrasena);
                 await client.SendMailAsync(mail);
             }
         }
 
-
+        // ===========================
+        // 🧾 GENERA UN RESUMEN DE VENTA PARA INCLUIR EN EL CORREO
+        // ===========================
         public async Task<string> GenerarResumenVentaAsync(int ventaId)
         {
             var venta = _context.Ventas.FirstOrDefault(v => v.IdVentas == ventaId);
@@ -61,13 +110,20 @@ namespace BackCafeteria.Services
                 .ToList();
 
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine($"Resumen de Venta #{ventaId}");
+            sb.AppendLine($"📄 Resumen de Venta #{ventaId}");
+            sb.AppendLine($"Fecha: {venta.FechaVenta:dd/MM/yyyy}");
+            sb.AppendLine($"Total: ${venta.TotalVenta:F2}");
+            sb.AppendLine("Detalles:");
+
             foreach (var detalle in detalles)
             {
-                sb.AppendLine($"Producto: {detalle.FkIdProductoNavigation.Nombre} - Cantidad: {detalle.CantidadProducto}");
+                sb.AppendLine($"- {detalle.FkIdProductoNavigation.Nombre}: {detalle.CantidadProducto} × ${detalle.PrecioUnitario:F2}");
             }
 
             return sb.ToString();
         }
     }
 }
+    // ===========================
+    // ⚙️ MODELO DE CONFIGURACIÓN
+    // ===========================

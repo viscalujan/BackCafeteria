@@ -1,12 +1,14 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using BackCafeteria.Models;
+﻿using BackCafeteria.Models;
 using BackCafeteria.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using QRCoder;
 using System;
 using System.IO;
+using System.Net;
+using System.Net.Mail;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.EntityFrameworkCore;
 
 namespace BackCafeteria.Controllers
 {
@@ -24,53 +26,87 @@ namespace BackCafeteria.Controllers
 
         // ✅ POST: api/UsuarioNC/EnviarQR
         [HttpPost("EnviarQR")]
-        public IActionResult EnviarQR([FromBody] Usuario usuario)
+        [AllowAnonymous] // puedes quitarlo si quieres mantener la autenticación
+        public IActionResult EnviarQR([FromBody] CorreoQRRequest datos)
         {
             try
             {
-                if (usuario == null)
-                    return BadRequest("Datos del usuario no válidos.");
+                if (datos == null)
+                    return BadRequest("No se recibieron datos válidos.");
 
-                if (string.IsNullOrEmpty(usuario.CorreoUsuario))
-                    return BadRequest("El correo del usuario es obligatorio.");
+                if (string.IsNullOrEmpty(datos.CorreoRemitente) || string.IsNullOrEmpty(datos.ClaveApp))
+                    return BadRequest("Faltan datos de autenticación del remitente.");
+
+                if (string.IsNullOrEmpty(datos.CorreoDestino))
+                    return BadRequest("El correo destino es obligatorio.");
 
                 byte[] qrBytes;
 
-                // 🔹 Si la huella ya viene en Base64 (cadena), la convertimos directamente
-                if (!string.IsNullOrEmpty(usuario.HuellaBase64))
+                // 🔹 Generar QR
+                if (!string.IsNullOrEmpty(datos.HuellaBase64))
                 {
-                    qrBytes = Convert.FromBase64String(usuario.HuellaBase64);
-                }
-                else if (!string.IsNullOrEmpty(usuario.Huella))
-                {
-                    // 🔹 Generar código QR con el valor de la huella
-                    using (var qrGenerator = new QRCodeGenerator())
+                    try
                     {
-                        var qrData = qrGenerator.CreateQrCode(usuario.Huella, QRCodeGenerator.ECCLevel.Q);
-                        using (var qrCode = new QRCode(qrData))
-                        using (var bitmap = qrCode.GetGraphic(20))
-                        using (var ms = new MemoryStream())
+                        qrBytes = Convert.FromBase64String(datos.HuellaBase64);
+                    }
+                    catch
+                    {
+                        using (var qrGen = new QRCoder.QRCodeGenerator())
                         {
-                            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                            qrBytes = ms.ToArray();
+                            var qrData = qrGen.CreateQrCode(datos.HuellaBase64, QRCoder.QRCodeGenerator.ECCLevel.Q);
+                            using (var qr = new QRCoder.QRCode(qrData))
+                            using (var bmp = qr.GetGraphic(20))
+                            using (var ms = new MemoryStream())
+                            {
+                                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                                qrBytes = ms.ToArray();
+                            }
                         }
                     }
                 }
                 else
                 {
-                    return BadRequest("No se proporcionó una huella válida.");
+                    using (var qrGen = new QRCoder.QRCodeGenerator())
+                    {
+                        var qrData = qrGen.CreateQrCode(datos.Huella ?? "HUELLA_NO_PROPORCIONADA", QRCoder.QRCodeGenerator.ECCLevel.Q);
+                        using (var qr = new QRCoder.QRCode(qrData))
+                        using (var bmp = qr.GetGraphic(20))
+                        using (var ms = new MemoryStream())
+                        {
+                            bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                            qrBytes = ms.ToArray();
+                        }
+                    }
                 }
 
-                // 🔹 Enviar correo con el QR adjunto
-                EmailService.EnviarCorreoConQR(usuario.CorreoUsuario, qrBytes);
+                // 🔹 Configurar cliente SMTP con datos del remitente
+                using (var client = new System.Net.Mail.SmtpClient(datos.SmtpServidor, datos.SmtpPuerto))
+                {
+                    client.EnableSsl = datos.UsarSSL;
+                    client.Credentials = new System.Net.NetworkCredential(datos.CorreoRemitente, datos.ClaveApp);
 
-                return Ok(new { message = "Correo con QR enviado correctamente." });
+                    var mail = new System.Net.Mail.MailMessage
+                    {
+                        From = new System.Net.Mail.MailAddress(datos.CorreoRemitente),
+                        Subject = "Código QR - Cafetería",
+                        Body = "Aquí tienes tu código QR generado automáticamente.",
+                        IsBodyHtml = true
+                    };
+
+                    mail.To.Add(datos.CorreoDestino);
+                    mail.Attachments.Add(new System.Net.Mail.Attachment(new MemoryStream(qrBytes), "codigoQR.png", "image/png"));
+
+                    client.Send(mail);
+                }
+
+                return Ok(new { message = "Correo enviado correctamente al destinatario." });
             }
             catch (Exception ex)
             {
                 return BadRequest(new { message = "Error al enviar QR: " + ex.Message });
             }
         }
+
 
         // ✅ GET: api/UsuarioNC/historial-credito/{numeroControl}
         [HttpGet("historial-credito/{numeroControl}")]

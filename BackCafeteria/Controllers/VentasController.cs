@@ -17,11 +17,13 @@ public class VentasController : ControllerBase
     private readonly CafeteriaDbv2Context _context;
     private readonly EmailService _emailService;
 
-    public VentasController(CafeteriaDbv2Context context)
+    public VentasController(CafeteriaDbv2Context context, EmailService emailService)
     {
         _context = context;
-        _emailService = new EmailService(context);
+        _emailService = emailService;
     }
+
+
 
     [HttpPost]
     public async Task<IActionResult> CrearVenta([FromBody] VentaCreateDTO dto)
