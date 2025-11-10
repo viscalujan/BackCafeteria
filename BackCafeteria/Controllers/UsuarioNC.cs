@@ -26,8 +26,8 @@ namespace BackCafeteria.Controllers
 
         // ✅ POST: api/UsuarioNC/EnviarQR
         [HttpPost("EnviarQR")]
-        [AllowAnonymous] // puedes quitarlo si quieres mantener la autenticación
-        public IActionResult EnviarQR([FromBody] CorreoQRRequest datos)
+        [AllowAnonymous]
+        public async Task<IActionResult> EnviarQR([FromBody] CorreoQRRequest datos)
         {
             try
             {
@@ -40,46 +40,40 @@ namespace BackCafeteria.Controllers
                 if (string.IsNullOrEmpty(datos.CorreoDestino))
                     return BadRequest("El correo destino es obligatorio.");
 
+                if (string.IsNullOrEmpty(datos.NumeroControl))
+                    return BadRequest("Debe especificar el número de control del usuario.");
+
                 byte[] qrBytes;
 
-                // 🔹 Generar QR
-                if (!string.IsNullOrEmpty(datos.HuellaBase64))
+                // 🔹 Generar QR a partir de la huella o texto
+                string textoQR = datos.Huella ?? datos.NumeroControl;
+
+                using (var qrGen = new QRCoder.QRCodeGenerator())
                 {
-                    try
+                    var qrData = qrGen.CreateQrCode(textoQR, QRCoder.QRCodeGenerator.ECCLevel.Q);
+                    using (var qr = new QRCoder.QRCode(qrData))
+                    using (var bmp = qr.GetGraphic(20))
+                    using (var ms = new MemoryStream())
                     {
-                        qrBytes = Convert.FromBase64String(datos.HuellaBase64);
+                        bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                        qrBytes = ms.ToArray();
                     }
-                    catch
-                    {
-                        using (var qrGen = new QRCoder.QRCodeGenerator())
-                        {
-                            var qrData = qrGen.CreateQrCode(datos.HuellaBase64, QRCoder.QRCodeGenerator.ECCLevel.Q);
-                            using (var qr = new QRCoder.QRCode(qrData))
-                            using (var bmp = qr.GetGraphic(20))
-                            using (var ms = new MemoryStream())
-                            {
-                                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                                qrBytes = ms.ToArray();
-                            }
-                        }
-                    }
+                }
+
+                // 🔹 Guardar el QR en la base de datos del usuario
+                var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.NumeroControl == datos.NumeroControl);
+                if (usuario != null)
+                {
+                    usuario.Huella = Convert.ToBase64String(qrBytes);
+                    usuario.CodigoQRTexto = textoQR;
+                    await _context.SaveChangesAsync();
                 }
                 else
                 {
-                    using (var qrGen = new QRCoder.QRCodeGenerator())
-                    {
-                        var qrData = qrGen.CreateQrCode(datos.Huella ?? "HUELLA_NO_PROPORCIONADA", QRCoder.QRCodeGenerator.ECCLevel.Q);
-                        using (var qr = new QRCoder.QRCode(qrData))
-                        using (var bmp = qr.GetGraphic(20))
-                        using (var ms = new MemoryStream())
-                        {
-                            bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                            qrBytes = ms.ToArray();
-                        }
-                    }
+                    return NotFound($"No se encontró un usuario con número de control {datos.NumeroControl}");
                 }
 
-                // 🔹 Configurar cliente SMTP con datos del remitente
+                // 🔹 Configurar cliente SMTP
                 using (var client = new System.Net.Mail.SmtpClient(datos.SmtpServidor, datos.SmtpPuerto))
                 {
                     client.EnableSsl = datos.UsarSSL;
@@ -88,18 +82,22 @@ namespace BackCafeteria.Controllers
                     var mail = new System.Net.Mail.MailMessage
                     {
                         From = new System.Net.Mail.MailAddress(datos.CorreoRemitente),
-                        Subject = "Código QR - Cafetería",
-                        Body = "Aquí tienes tu código QR generado automáticamente.",
-                        IsBodyHtml = true
+                        Subject = "Código QR - Cafetería TEC",
+                        Body = $"Hola 👋,\n\nAdjuntamos tu código QR de acceso.\n\nNúmero de control: {datos.NumeroControl}\n\nSaludos,\nCafetería TEC",
+                        IsBodyHtml = false
                     };
 
                     mail.To.Add(datos.CorreoDestino);
                     mail.Attachments.Add(new System.Net.Mail.Attachment(new MemoryStream(qrBytes), "codigoQR.png", "image/png"));
 
-                    client.Send(mail);
+                    await client.SendMailAsync(mail);
                 }
 
-                return Ok(new { message = "Correo enviado correctamente al destinatario." });
+                return Ok(new
+                {
+                    message = "QR enviado y guardado correctamente.",
+                    numeroControl = datos.NumeroControl
+                });
             }
             catch (Exception ex)
             {
