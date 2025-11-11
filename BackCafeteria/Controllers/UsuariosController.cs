@@ -6,9 +6,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BackCafeteria.Controllers
 {
-    [ApiController]
+   [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "inventario,ventas")]
+    //[Authorize(Roles = "inventario,ventas")]
     public class UsuariosController : ControllerBase
     {
         private readonly CafeteriaDbv2Context _context;

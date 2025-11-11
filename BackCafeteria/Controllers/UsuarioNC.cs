@@ -1,4 +1,5 @@
-﻿using BackCafeteria.Models;
+﻿using BackCafeteria.DTOs;
+using BackCafeteria.Models;
 using BackCafeteria.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,9 +13,9 @@ using System.Threading.Tasks;
 
 namespace BackCafeteria.Controllers
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    [Authorize(Roles = "alumno")]
+   [ApiController]
+   [Route("api/[controller]")]
+    //[Authorize(Roles = "alumno")]
     public class UsuarioNCController : ControllerBase
     {
         private readonly CafeteriaDbv2Context _context;
@@ -122,6 +123,69 @@ namespace BackCafeteria.Controllers
 
             return Ok(historial);
         }
+
+
+        [HttpPost("transferir-credito")]
+        public async Task<IActionResult> TransferirCredito([FromBody] TransferenciaCreditoDTO dto)
+        {
+            if (dto.Cantidad <= 0)
+                return BadRequest("La cantidad debe ser mayor a cero.");
+
+            // 🔹 Buscar emisor y receptor
+            var emisor = await _context.Usuarios.FirstOrDefaultAsync(u => u.NumeroControl == dto.NumeroControlEmisor);
+            var receptor = await _context.Usuarios.FirstOrDefaultAsync(u => u.NumeroControl == dto.NumeroControlReceptor);
+
+            if (emisor == null)
+                return NotFound("No se encontró el usuario emisor.");
+
+            if (receptor == null)
+                return NotFound("No se encontró el usuario receptor.");
+
+            // 🔹 Validar contraseña
+            if (emisor.ContraUsuario != dto.ContrasenaEmisor)
+                return Unauthorized("Contraseña incorrecta.");
+
+            // 🔹 Verificar crédito disponible
+            if (emisor.Credito < dto.Cantidad)
+                return BadRequest("Crédito insuficiente para realizar la transferencia.");
+
+            // 🔹 Actualizar créditos
+            emisor.Credito -= dto.Cantidad;
+            receptor.Credito += dto.Cantidad;
+
+            // 🔹 Registrar en historial (positivo y negativo)
+            var historialEmisor = new HistorialCredito
+            {
+                NumeroControlAfectado = emisor.NumeroControl!,
+                Monto = -dto.Cantidad,
+                FechaMovimiento = DateTime.Now,
+                AutCorreo = $"Transferencia a {receptor.NumeroControl}"
+            };
+
+            var historialReceptor = new HistorialCredito
+            {
+                NumeroControlAfectado = receptor.NumeroControl!,
+                Monto = dto.Cantidad,
+                FechaMovimiento = DateTime.Now,
+                AutCorreo = $"Transferencia recibida de {emisor.NumeroControl}"
+            };
+
+            _context.HistorialCreditos!.Add(historialEmisor);
+            _context.HistorialCreditos!.Add(historialReceptor);
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                mensaje = $"Transferencia completada. {dto.Cantidad:C} transferidos de {emisor.NumeroControl} a {receptor.NumeroControl}",
+                creditoEmisor = emisor.Credito,
+                creditoReceptor = receptor.Credito
+            });
+        }
+
+
+
+
 
         // ✅ GET: api/UsuarioNC/credito/{numeroControl}
         [HttpGet("credito/{numeroControl}")]
