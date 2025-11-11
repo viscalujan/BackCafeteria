@@ -11,7 +11,7 @@ using System.Linq;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "ventas")]
+//[Authorize(Roles = "ventas")]
 public class VentasController : ControllerBase
 {
     private readonly CafeteriaDbv2Context _context;
