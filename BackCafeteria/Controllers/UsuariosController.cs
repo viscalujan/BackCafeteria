@@ -36,7 +36,7 @@ namespace BackCafeteria.Controllers
                 NombreUsuario = nuevo.Nombre,
                 CorreoUsuario = nuevo.Correo,
                 NumeroControl = nuevo.NumeroControl,
-                RolUsuario = nuevo.Rol,
+                RolUsuario = "alumno",
                 ContraUsuario = nuevo.Contra,
                 Credito = nuevo.Credito,
                 CodigoQRTexto = nuevo.CodigoQRTexto
