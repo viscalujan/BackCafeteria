@@ -1,8 +1,12 @@
 ﻿using BackCafeteria.DTOs;
+using BackCafeteria.Helpers;
 using BackCafeteria.Models;
+using BackCafeteria.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.VisualStudio.Web.CodeGenerators.Mvc.Templates.BlazorIdentity.Pages.Manage;
+
 
 namespace BackCafeteria.Controllers
 {
@@ -12,18 +16,20 @@ namespace BackCafeteria.Controllers
     public class UsuariosController : ControllerBase
     {
         private readonly CafeteriaDbv2Context _context;
+        private readonly EmailService _email;
 
-        public UsuariosController(CafeteriaDbv2Context context)
+
+        public UsuariosController(CafeteriaDbv2Context context, EmailService email)
         {
             _context = context;
+            _email = email;
         }
 
         // ================= POST: Crear usuario =================
         [HttpPost("crear-usuario")]
         public async Task<IActionResult> PostUsuario([FromBody] UsuarioCreateDTO nuevo)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+            if (!ModelState.IsValid) return BadRequest(ModelState);
 
             if (await _context.Usuarios.AnyAsync(u => u.NumeroControl == nuevo.NumeroControl))
                 return BadRequest("Ya existe un usuario con ese número de control.");
@@ -31,33 +37,40 @@ namespace BackCafeteria.Controllers
             if (await _context.Usuarios.AnyAsync(u => u.CorreoUsuario == nuevo.Correo))
                 return BadRequest("Ya existe un usuario con ese correo.");
 
+            if (nuevo.Credito < 50)
+                return BadRequest("El crédito inicial debe ser al menos 50.");
+
+            // 1) Generar QR (hash + PNG)
+            var (_, qrPngBytes, hashQR) = QRHelper.GenerarCodigoQR(nuevo.NumeroControl);
+
             var usuario = new Usuario
             {
                 NombreUsuario = nuevo.Nombre,
                 CorreoUsuario = nuevo.Correo,
                 NumeroControl = nuevo.NumeroControl,
                 RolUsuario = "alumno",
-                ContraUsuario = BCrypt.Net.BCrypt.HashPassword(nuevo.Contra), 
+                ContraUsuario = BCrypt.Net.BCrypt.HashPassword(nuevo.Contra),
                 Credito = nuevo.Credito,
-                CodigoQRTexto = nuevo.CodigoQRTexto
+                CodigoQRTexto = hashQR,                          // hash (64 chars)
+                Huella = Convert.ToBase64String(qrPngBytes)      // PNG en Base64
             };
-
 
             _context.Usuarios.Add(usuario);
             await _context.SaveChangesAsync();
 
-            // Registrar historial inicial
-            var historial = new HistorialCredito
+            _context.HistorialCreditos!.Add(new HistorialCredito
             {
                 NumeroControlAfectado = usuario.NumeroControl,
                 Monto = usuario.Credito,
                 FechaMovimiento = DateTime.Now,
                 AutCorreo = "Sistema"
-            };
-            _context.HistorialCreditos!.Add(historial);
+            });
             await _context.SaveChangesAsync();
 
-            return Ok(new { mensaje = "Usuario registrado correctamente.", usuarioId = usuario.IdUsuario });
+            // 2) Enviar por correo el PNG adjunto
+            _email.EnviarCorreoConQR(usuario.CorreoUsuario!, qrPngBytes);
+
+            return Ok(new { mensaje = "Usuario registrado y QR enviado.", usuarioId = usuario.IdUsuario });
         }
 
         // ================= POST: Aumentar crédito =================
@@ -190,5 +203,26 @@ namespace BackCafeteria.Controllers
 
             return Ok(historial);
         }
+
+        public class QRValidacionDTO { public string Hash { get; set; } = null!; }
+
+        [HttpPost("validar-qr")]
+        public async Task<IActionResult> ValidarQR([FromBody] QRValidacionDTO dto)
+        {
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.CodigoQRTexto == dto.Hash);
+
+            if (usuario == null) return NotFound("QR inválido.");
+
+            return Ok(new
+            {
+                usuario.IdUsuario,
+                usuario.NombreUsuario,
+                usuario.CorreoUsuario,
+                usuario.Credito
+            });
+        }
+
+
     }
 }

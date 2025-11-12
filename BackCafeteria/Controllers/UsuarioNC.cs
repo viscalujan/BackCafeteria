@@ -199,30 +199,38 @@ namespace BackCafeteria.Controllers
             return Ok(new { credito = usuario.Credito });
         }
 
-        // ✅ GET: api/UsuarioNC/qr/{numeroControl}
         [HttpGet("qr/{numeroControl}")]
         public async Task<IActionResult> ObtenerCodigoQR(string numeroControl)
         {
             var usuario = await _context.Usuarios
                 .Where(u => u.NumeroControl == numeroControl)
-                .Select(u => new { u.Huella, u.CodigoQRTexto })
+                .Select(u => new { u.Huella })
                 .FirstOrDefaultAsync();
 
-            if (usuario == null || usuario.Huella == null)
+            if (usuario == null || string.IsNullOrEmpty(usuario.Huella))
                 return NotFound("QR no encontrado para este usuario.");
 
-            // Convertir la huella (si es base64) en bytes para devolver como imagen
-            byte[] qrBytes;
-            try
-            {
-                qrBytes = Convert.FromBase64String(usuario.Huella);
-            }
-            catch
-            {
-                return BadRequest("La huella no es una imagen válida en Base64.");
-            }
+            byte[] pngBytes;
+            try { pngBytes = Convert.FromBase64String(usuario.Huella); }
+            catch { return BadRequest("La huella no es una imagen válida."); }
 
-            return File(qrBytes, "image/png", $"QR_{numeroControl}.png");
+            return File(pngBytes, "image/png", $"QR_{numeroControl}.png");
         }
+
+        [HttpGet("qr/base64/{numeroControl}")]
+        public async Task<IActionResult> ObtenerCodigoQRBase64(string numeroControl)
+        {
+            var usuario = await _context.Usuarios
+                .Where(u => u.NumeroControl == numeroControl)
+                .Select(u => new { u.Huella })
+                .FirstOrDefaultAsync();
+
+            if (usuario == null || string.IsNullOrEmpty(usuario.Huella))
+                return NotFound("QR no encontrado para este usuario.");
+
+            return Ok(new { base64 = usuario.Huella });
+        }
+
+
     }
 }

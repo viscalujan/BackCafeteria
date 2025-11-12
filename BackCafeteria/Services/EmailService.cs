@@ -45,31 +45,32 @@ namespace BackCafeteria.Services
         // ===========================
         // ✉️ MÉTODO PRINCIPAL PARA ENVIAR CORREO CON QR
         // ===========================
-        public void EnviarCorreoConQR(string correoDestino, byte[] qrBytes)
+        public void EnviarCorreoConQR(string correoDestino, byte[] qrPngBytes)
         {
-            string remitente = _settings.CorreoRemitente;
-            string contrasena = _settings.ClaveApp;
+            var remitente = _settings.CorreoRemitente;
+            var clave = _settings.ClaveApp;
 
             var (host, port, ssl) = ObtenerConfiguracionSMTP(remitente);
 
-            using (var ms = new MemoryStream(qrBytes))
-            using (var attachment = new Attachment(ms, "QR.png", "image/png"))
-            using (var mail = new MailMessage())
+            using var ms = new MemoryStream(qrPngBytes);
+            using var adj = new Attachment(ms, "QR.png", "image/png");
+            using var mail = new MailMessage
             {
-                mail.From = new MailAddress(remitente, "Cafetería TEC");
-                mail.To.Add(correoDestino);
-                mail.Subject = "Tu código QR de acceso";
-                mail.Body = "Hola 👋,\n\nAdjuntamos tu código QR generado correctamente.\n\nSaludos,\nCafetería TEC";
-                mail.Attachments.Add(attachment);
+                From = new MailAddress(remitente, "Cafetería TEC"),
+                Subject = "Tu código QR de acceso",
+                Body = "Hola 👋,\n\nAdjuntamos tu código QR generado correctamente.\n\nSaludos,\nCafetería TEC",
+                IsBodyHtml = false
+            };
+            mail.To.Add(correoDestino);
+            mail.Attachments.Add(adj);
 
-                using (var client = new SmtpClient(host, port))
-                {
-                    client.EnableSsl = ssl;
-                    client.UseDefaultCredentials = false;
-                    client.Credentials = new NetworkCredential(remitente, contrasena);
-                    client.Send(mail);
-                }
-            }
+            using var client = new SmtpClient(host, port)
+            {
+                EnableSsl = ssl,
+                UseDefaultCredentials = false,
+                Credentials = new NetworkCredential(remitente, clave)
+            };
+            client.Send(mail);
         }
 
         // ===========================

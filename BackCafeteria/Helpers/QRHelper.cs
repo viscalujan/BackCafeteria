@@ -12,24 +12,24 @@ namespace BackCafeteria.Helpers
     {
         public static (string contenidoQR, byte[] imagenQR, string hashQR) GenerarCodigoQR(string numeroControl)
         {
-            string contenidoOriginal = $"{numeroControl}_{DateTime.Now:yyyyMMddHHmmss}";
-            string hash = GenerarHashSHA256(contenidoOriginal);
+            // Usa UTC para evitar problemas de huso horario
+            string contenidoOriginal = $"{numeroControl}_{DateTime.UtcNow:yyyyMMddHHmmss}";
+            string hash = Sha256Hex(contenidoOriginal);
 
-            // Generar imagen QR con el hash
             using var qrGenerator = new QRCodeGenerator();
             using var qrData = qrGenerator.CreateQrCode(hash, QRCodeGenerator.ECCLevel.Q);
             using var qrCode = new BitmapByteQRCode(qrData);
-            byte[] imagenBytes = qrCode.GetGraphic(20);
+            byte[] imagenBytes = qrCode.GetGraphic(20); // PNG
 
             return (contenidoOriginal, imagenBytes, hash);
         }
 
-        private static string GenerarHashSHA256(string texto)
+        private static string Sha256Hex(string texto)
         {
             using var sha = SHA256.Create();
-            byte[] hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(texto));
-            return Convert.ToHexString(hashBytes); // desde .NET 5+ / .ToHexString es más limpio que BitConverter
+            var bytes = Encoding.UTF8.GetBytes(texto);
+            return Convert.ToHexString(sha.ComputeHash(bytes)); // 64 chars
         }
-    
+
     }
 }
