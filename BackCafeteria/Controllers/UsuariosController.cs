@@ -37,10 +37,11 @@ namespace BackCafeteria.Controllers
                 CorreoUsuario = nuevo.Correo,
                 NumeroControl = nuevo.NumeroControl,
                 RolUsuario = "alumno",
-                ContraUsuario = nuevo.Contra,
+                ContraUsuario = BCrypt.Net.BCrypt.HashPassword(nuevo.Contra), 
                 Credito = nuevo.Credito,
                 CodigoQRTexto = nuevo.CodigoQRTexto
             };
+
 
             _context.Usuarios.Add(usuario);
             await _context.SaveChangesAsync();
