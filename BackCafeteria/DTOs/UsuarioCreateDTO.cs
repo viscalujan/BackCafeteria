@@ -11,13 +11,13 @@ public class UsuarioCreateDTO
     [Required]
     public string NumeroControl { get; set; } = null!;
     [Required]
-    public string Rol { get; set; } = null!;
-    [Required]
     public string Contra { get; set; } = null!;
     public decimal Credito { get; set; }
     public string? CodigoQRTexto { get; set; }
-}
 
+    // 🔥 AGREGAR DE VUELTA la propiedad Rol
+    public string Rol { get; set; } = "alumno"; // ✅ Valor por defecto
+}
 
 
 public class AumentoCreditoDTO

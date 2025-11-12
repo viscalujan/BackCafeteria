@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BackCafeteria.Controllers
 {
-   [ApiController]
+    [ApiController]
     [Route("api/[controller]")]
     //[Authorize(Roles = "inventario,ventas")]
     public class UsuariosController : ControllerBase
@@ -31,17 +31,17 @@ namespace BackCafeteria.Controllers
             if (await _context.Usuarios.AnyAsync(u => u.CorreoUsuario == nuevo.Correo))
                 return BadRequest("Ya existe un usuario con ese correo.");
 
+            // 🔥 CORRECCIÓN: Hashear contraseña
             var usuario = new Usuario
             {
                 NombreUsuario = nuevo.Nombre,
                 CorreoUsuario = nuevo.Correo,
                 NumeroControl = nuevo.NumeroControl,
-                RolUsuario = "alumno",
-                ContraUsuario = BCrypt.Net.BCrypt.HashPassword(nuevo.Contra), 
+                RolUsuario = "alumno", // 🔥 Siempre "alumno", ignora el Rol del DTO
+                ContraUsuario = BCrypt.Net.BCrypt.HashPassword(nuevo.Contra), // ✅ HASHEAR
                 Credito = nuevo.Credito,
-                CodigoQRTexto = nuevo.CodigoQRTexto
+                CodigoQRTexto = nuevo.CodigoQRTexto ?? nuevo.NumeroControl // ✅ QR por defecto
             };
-
 
             _context.Usuarios.Add(usuario);
             await _context.SaveChangesAsync();
@@ -60,6 +60,7 @@ namespace BackCafeteria.Controllers
             return Ok(new { mensaje = "Usuario registrado correctamente.", usuarioId = usuario.IdUsuario });
         }
 
+        // Los otros métodos permanecen igual...
         // ================= POST: Aumentar crédito =================
         [HttpPost("aumentar-credito")]
         public async Task<IActionResult> AumentarCredito(AumentoCreditoDTO dto)

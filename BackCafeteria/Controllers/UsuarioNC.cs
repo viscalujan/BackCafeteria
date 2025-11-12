@@ -13,8 +13,8 @@ using System.Threading.Tasks;
 
 namespace BackCafeteria.Controllers
 {
-   [ApiController]
-   [Route("api/[controller]")]
+    [ApiController]
+    [Route("api/[controller]")]
     //[Authorize(Roles = "alumno")]
     public class UsuarioNCController : ControllerBase
     {
@@ -106,7 +106,6 @@ namespace BackCafeteria.Controllers
             }
         }
 
-
         // ✅ GET: api/UsuarioNC/historial-credito/{numeroControl}
         [HttpGet("historial-credito/{numeroControl}")]
         public async Task<IActionResult> ObtenerHistorialCreditoUsuario(string numeroControl)
@@ -124,7 +123,6 @@ namespace BackCafeteria.Controllers
             return Ok(historial);
         }
 
-
         [HttpPost("transferir-credito")]
         public async Task<IActionResult> TransferirCredito([FromBody] TransferenciaCreditoDTO dto)
         {
@@ -141,8 +139,8 @@ namespace BackCafeteria.Controllers
             if (receptor == null)
                 return NotFound("No se encontró el usuario receptor.");
 
-            // 🔹 Validar contraseña
-            if (emisor.ContraUsuario != dto.ContrasenaEmisor)
+            // 🔥 CORRECCIÓN: Verificar contraseña HASHEADA
+            if (!BCrypt.Net.BCrypt.Verify(dto.ContrasenaEmisor, emisor.ContraUsuario))
                 return Unauthorized("Contraseña incorrecta.");
 
             // 🔹 Verificar crédito disponible
@@ -182,10 +180,6 @@ namespace BackCafeteria.Controllers
                 creditoReceptor = receptor.Credito
             });
         }
-
-
-
-
 
         // ✅ GET: api/UsuarioNC/credito/{numeroControl}
         [HttpGet("credito/{numeroControl}")]
