@@ -227,19 +227,26 @@ namespace BackCafeteria.Controllers
 
         [HttpGet("historial-credito-filtrado")]
         public async Task<IActionResult> ObtenerHistorialCreditoFiltrado(
-    [FromQuery] DateTime? desde,
-    [FromQuery] DateTime? hasta,
-    [FromQuery] string? numeroControl)
+          [FromQuery] DateTime? desde,
+          [FromQuery] DateTime? hasta,
+          [FromQuery] string? numeroControl)
         {
-            desde ??= DateTime.Today.AddMonths(-1);  // último mes por default
-            hasta ??= DateTime.Today.AddDays(1);     // incluir el día actual
+            // último mes por default
+            desde ??= DateTime.Today.AddMonths(-1);
+
+            // 👇 Ajuste importante: incluir TODO el día "hasta"
+            if (hasta.HasValue)
+                hasta = hasta.Value.Date.AddDays(1); // día siguiente a las 00:00
+            else
+                hasta = DateTime.Today.AddDays(1);   // por defecto: hoy completo
 
             var query = _context.HistorialCreditos!.AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(numeroControl))
                 query = query.Where(h => h.NumeroControlAfectado == numeroControl);
 
-            query = query.Where(h => h.FechaMovimiento >= desde && h.FechaMovimiento <= hasta);
+            // 👇 usamos "< hasta" en lugar de "<="
+            query = query.Where(h => h.FechaMovimiento >= desde && h.FechaMovimiento < hasta);
 
             var historial = await query
                 .OrderByDescending(h => h.FechaMovimiento)
@@ -256,25 +263,26 @@ namespace BackCafeteria.Controllers
             return Ok(historial);
         }
 
+
         [HttpGet("historial-credito-excel")]
         public async Task<IActionResult> ExportarHistorialExcel(
-    [FromQuery] DateTime? desde,
-    [FromQuery] DateTime? hasta,
-    [FromQuery] string? numeroControl)
+          [FromQuery] DateTime? desde,
+          [FromQuery] DateTime? hasta,
+          [FromQuery] string? numeroControl)
         {
             desde ??= DateTime.Today.AddMonths(-1);
-            hasta ??= DateTime.Today.AddDays(1);
+
+            if (hasta.HasValue)
+                hasta = hasta.Value.Date.AddDays(1);
+            else
+                hasta = DateTime.Today.AddDays(1);
 
             var query = _context.HistorialCreditos!.AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(numeroControl))
                 query = query.Where(h => h.NumeroControlAfectado == numeroControl);
 
-            if (hasta.HasValue)
-            {
-                // sumar un día para incluir todo el día "hasta"
-                hasta = hasta.Value.Date.AddDays(1);
-            }
+            query = query.Where(h => h.FechaMovimiento >= desde && h.FechaMovimiento < hasta);
 
             var historial = await query
                 .OrderBy(h => h.FechaMovimiento)
@@ -285,7 +293,6 @@ namespace BackCafeteria.Controllers
             using var package = new ExcelPackage();
             var sheet = package.Workbook.Worksheets.Add("Historial");
 
-            // ENCABEZADOS
             sheet.Cells["A1"].Value = "ID";
             sheet.Cells["B1"].Value = "Número Control";
             sheet.Cells["C1"].Value = "Cantidad";
@@ -311,6 +318,7 @@ namespace BackCafeteria.Controllers
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 $"HistorialCredito_{DateTime.Now:yyyyMMddHHmmss}.xlsx");
         }
+
 
 
 
