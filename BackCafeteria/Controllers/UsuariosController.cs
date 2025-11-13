@@ -167,7 +167,6 @@ namespace BackCafeteria.Controllers
             });
         }
 
-        // ================= GET: Historial de crédito general =================
         [HttpGet("historial-credito")]
         public async Task<IActionResult> ObtenerHistorialCreditoGeneral()
         {
@@ -175,10 +174,11 @@ namespace BackCafeteria.Controllers
                 .OrderByDescending(h => h.FechaMovimiento)
                 .Select(h => new
                 {
-                    h.NumeroControlAfectado,
-                    h.Monto,
-                    h.FechaMovimiento,
-                    h.AutCorreo
+                    Id = h.IdHistorialCredito,                 // ← Agregado
+                    NumeroControlAfectado = h.NumeroControlAfectado,
+                    Cantidad = h.Monto,                 // ← Renombrado
+                    Fecha = h.FechaMovimiento,          // ← Renombrado
+                    AutCorreo = h.AutCorreo
                 })
                 .ToListAsync();
 

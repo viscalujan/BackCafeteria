@@ -1,4 +1,5 @@
 ﻿using BackCafeteria.DTOs;
+using BackCafeteria.Helpers;
 using BackCafeteria.Models;
 using BackCafeteria.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -227,6 +228,46 @@ namespace BackCafeteria.Controllers
 
             return Ok(new { base64 = usuario.Huella });
         }
+
+        [HttpPost("regenerar-qr/{numeroControl}")]
+        public async Task<IActionResult> RegenerarQR(string numeroControl)
+        {
+            // 1) Buscar usuario
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);
+
+            if (usuario == null)
+                return NotFound("Usuario no encontrado.");
+
+            // 2) Generar un nuevo QR basado en NC + timestamp
+            var (contenidoQR, qrBytes, hashQR) = QRHelper.GenerarCodigoQR(numeroControl);
+
+            // 3) Guardar Base64 y hash en la BD
+            usuario.Huella = Convert.ToBase64String(qrBytes);
+            usuario.CodigoQRTexto = hashQR;
+
+            await _context.SaveChangesAsync();
+
+            // (Opcional) Enviar correo con el nuevo QR
+            try
+            {
+                var emailService = HttpContext.RequestServices.GetRequiredService<EmailService>();
+                emailService.EnviarCorreoConQR(usuario.CorreoUsuario, qrBytes);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error al enviar correo: " + ex.Message);
+            }
+
+            // 4) Responder con datos del QR (por si el front quiere actualizar sin recargar toda la vista)
+            return Ok(new
+            {
+                mensaje = "QR regenerado correctamente.",
+                qrBase64 = Convert.ToBase64String(qrBytes),
+                hash = hashQR
+            });
+        }
+
 
 
     }
