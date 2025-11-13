@@ -141,8 +141,9 @@ namespace BackCafeteria.Controllers
             if (receptor == null)
                 return NotFound("No se encontró el usuario receptor.");
 
-            // 🔹 Validar contraseña
-            if (emisor.ContraUsuario != dto.ContrasenaEmisor)
+            // 🔹 Validar contraseña (hash BCrypt)
+            var passwordValida = BCrypt.Net.BCrypt.Verify(dto.ContrasenaEmisor, emisor.ContraUsuario);
+            if (!passwordValida)
                 return Unauthorized("Contraseña incorrecta.");
 
             // 🔹 Verificar crédito disponible
@@ -182,10 +183,6 @@ namespace BackCafeteria.Controllers
                 creditoReceptor = receptor.Credito
             });
         }
-
-
-
-
 
         // ✅ GET: api/UsuarioNC/credito/{numeroControl}
         [HttpGet("credito/{numeroControl}")]
