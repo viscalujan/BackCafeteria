@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.Web.CodeGenerators.Mvc.Templates.BlazorIdentity.Pages.Manage;
+using OfficeOpenXml;
+using System.ComponentModel;
 
 
 namespace BackCafeteria.Controllers
@@ -222,6 +224,95 @@ namespace BackCafeteria.Controllers
                 usuario.Credito
             });
         }
+
+        [HttpGet("historial-credito-filtrado")]
+        public async Task<IActionResult> ObtenerHistorialCreditoFiltrado(
+    [FromQuery] DateTime? desde,
+    [FromQuery] DateTime? hasta,
+    [FromQuery] string? numeroControl)
+        {
+            desde ??= DateTime.Today.AddMonths(-1);  // último mes por default
+            hasta ??= DateTime.Today.AddDays(1);     // incluir el día actual
+
+            var query = _context.HistorialCreditos!.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(numeroControl))
+                query = query.Where(h => h.NumeroControlAfectado == numeroControl);
+
+            query = query.Where(h => h.FechaMovimiento >= desde && h.FechaMovimiento <= hasta);
+
+            var historial = await query
+                .OrderByDescending(h => h.FechaMovimiento)
+                .Select(h => new
+                {
+                    Id = h.IdHistorialCredito,
+                    NumeroControlAfectado = h.NumeroControlAfectado,
+                    Cantidad = h.Monto,
+                    Fecha = h.FechaMovimiento,
+                    AutCorreo = h.AutCorreo
+                })
+                .ToListAsync();
+
+            return Ok(historial);
+        }
+
+        [HttpGet("historial-credito-excel")]
+        public async Task<IActionResult> ExportarHistorialExcel(
+    [FromQuery] DateTime? desde,
+    [FromQuery] DateTime? hasta,
+    [FromQuery] string? numeroControl)
+        {
+            desde ??= DateTime.Today.AddMonths(-1);
+            hasta ??= DateTime.Today.AddDays(1);
+
+            var query = _context.HistorialCreditos!.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(numeroControl))
+                query = query.Where(h => h.NumeroControlAfectado == numeroControl);
+
+            if (hasta.HasValue)
+            {
+                // sumar un día para incluir todo el día "hasta"
+                hasta = hasta.Value.Date.AddDays(1);
+            }
+
+            var historial = await query
+                .OrderBy(h => h.FechaMovimiento)
+                .ToListAsync();
+
+            // EXPORTAR A EXCEL
+            ExcelPackage.LicenseContext = OfficeOpenXml.LicenseContext.NonCommercial;
+            using var package = new ExcelPackage();
+            var sheet = package.Workbook.Worksheets.Add("Historial");
+
+            // ENCABEZADOS
+            sheet.Cells["A1"].Value = "ID";
+            sheet.Cells["B1"].Value = "Número Control";
+            sheet.Cells["C1"].Value = "Cantidad";
+            sheet.Cells["D1"].Value = "Fecha";
+            sheet.Cells["E1"].Value = "Autorizado Por";
+
+            int row = 2;
+            foreach (var h in historial)
+            {
+                sheet.Cells[row, 1].Value = h.IdHistorialCredito;
+                sheet.Cells[row, 2].Value = h.NumeroControlAfectado;
+                sheet.Cells[row, 3].Value = h.Monto;
+                sheet.Cells[row, 4].Value = h.FechaMovimiento;
+                sheet.Cells[row, 5].Value = h.AutCorreo;
+                row++;
+            }
+
+            sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
+
+            var bytes = package.GetAsByteArray();
+
+            return File(bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                $"HistorialCredito_{DateTime.Now:yyyyMMddHHmmss}.xlsx");
+        }
+
+
 
 
     }
