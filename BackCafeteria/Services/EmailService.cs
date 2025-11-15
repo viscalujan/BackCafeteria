@@ -123,6 +123,38 @@ namespace BackCafeteria.Services
 
             return sb.ToString();
         }
+
+        // ===========================
+        // ❌ CORREO DE PEDIDO RECHAZADO
+        // ===========================
+        public async Task EnviarCorreoRechazoPedidoAsync(string correoDestino, int idPedido, string motivo, string nombreUsuario)
+        {
+            string remitente = _settings.CorreoRemitente;
+            string contrasena = _settings.ClaveApp;
+
+            var (host, port, ssl) = ObtenerConfiguracionSMTP(remitente);
+
+            string asunto = $"Pedido #{idPedido} rechazado";
+            string cuerpo =
+                $"Hola {nombreUsuario},\n\n" +
+                $"Tu pedido con el número #{idPedido} ha sido rechazado.\n\n" +
+                $"📝 Motivo del rechazo:\n{motivo}\n\n" +
+                $"Si necesitas más información, puedes acudir a la cafetería.\n\n" +
+                $"Saludos,\nCafetería TEC";
+
+            using (var mail = new MailMessage(remitente, correoDestino, asunto, cuerpo))
+            using (var client = new SmtpClient(host, port))
+            {
+                client.EnableSsl = ssl;
+                client.UseDefaultCredentials = false;
+                client.Credentials = new NetworkCredential(remitente, contrasena);
+
+                await client.SendMailAsync(mail);
+            }
+        }
+
+
+
     }
 }
     // ===========================

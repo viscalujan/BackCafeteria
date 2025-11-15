@@ -1,8 +1,11 @@
 ﻿using BackCafeteria.DTOs;
 using BackCafeteria.Models;
+using BackCafeteria.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using BackCafeteria.Services;
+
 
 namespace BackCafeteria.Controllers
 {
@@ -11,10 +14,13 @@ namespace BackCafeteria.Controllers
     public class PedidosController : ControllerBase
     {
         private readonly CafeteriaDbv2Context _context;
+        private readonly EmailService _emailService;
 
-        public PedidosController(CafeteriaDbv2Context context)
+
+        public PedidosController(CafeteriaDbv2Context context, EmailService emailService)
         {
             _context = context;
+            _emailService = emailService;
         }
 
         // 🔹 Crear pedido (rol alumno)
@@ -55,6 +61,38 @@ namespace BackCafeteria.Controllers
                 return BadRequest("Crédito insuficiente para realizar el pedido.");
 
             usuario.Credito -= total;
+
+            // Usuario liquidación ganha el monto (igual que ventas)
+            var liquidacion = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
+
+            if (liquidacion == null)
+            {
+                liquidacion = new Usuario
+                {
+                    NombreUsuario = "Liquidación",
+                    CorreoUsuario = "liquidacion@cafeteria.com",
+                    NumeroControl = "liquidacion",
+                    RolUsuario = "0",
+                    Credito = 0,
+                    CodigoQRTexto = "",
+                    ContraUsuario = "123456"
+                };
+                _context.Usuarios.Add(liquidacion);
+                await _context.SaveChangesAsync();
+            }
+
+            liquidacion.Credito += total;
+
+            // Registrar en historial de liquidación
+            _context.HistorialCreditos.Add(new HistorialCredito
+            {
+                NumeroControlAfectado = "liquidacion",
+                Monto = total,
+                FechaMovimiento = DateTime.Now,
+                AutCorreo = "Sistema-Pedido"
+            });
+
 
             var pedido = new Pedido
             {
@@ -113,8 +151,7 @@ namespace BackCafeteria.Controllers
 
         // 🔹 Cambiar estado del pedido (rol ventas)
         [HttpPut("{idPedido}/estado")]
-        //[Authorize(Roles = "ventas")]
-        public async Task<IActionResult> CambiarEstado(int idPedido, [FromQuery] int nuevoEstado)
+        public async Task<IActionResult> CambiarEstado(int idPedido, [FromBody] CambioEstadoPedidoDTO dto)
         {
             var pedido = await _context.Pedidos
                 .Include(p => p.FkIdUsuarioNavigation)
@@ -126,48 +163,100 @@ namespace BackCafeteria.Controllers
 
             var usuario = pedido.FkIdUsuarioNavigation;
 
-            // 4 = Rechazado → devolver crédito
-            if (nuevoEstado == 4)
+            switch (dto.NuevoEstado)
             {
-                usuario.Credito += pedido.TotalPedido ?? 0;
-                _context.HistorialCreditos.Add(new HistorialCredito
-                {
-                    NumeroControlAfectado = usuario.NumeroControl,
-                    Monto = pedido.TotalPedido ?? 0,
-                    FechaMovimiento = DateTime.Now,
-                    AutCorreo = "Sistema-Devolución"
-                });
-            }
+                case 2:
+                    // 2 = ACEPTADO
+                    // No se hace nada, solo cambia el estado
+                    break;
 
-            // 3 = Listo → crear venta (sin afectar crédito)
-            if (nuevoEstado == 3)
-            {
-                var venta = new Venta
-                {
-                    FkIdUsuario = usuario.IdUsuario,
-                    MetodoPago = "pedido",
-                    FechaVenta = DateTime.Now,
-                    TotalVenta = pedido.TotalPedido ?? 0,
-                    VentaDetalles = pedido.PedidoDetalles.Select(d => new VentaDetalle
+                case 3:
+                    // 3 = LISTO → generar venta SIN afectar crédito
+                    var venta = new Venta
                     {
-                        FkIdProducto = d.FkIdProducto,
-                        CantidadProducto = d.CantidadPdetalles,
-                        PrecioUnitario = d.PrecioDetalles
-                    }).ToList()
-                };
-                _context.Ventas.Add(venta);
+                        FkIdUsuario = usuario.IdUsuario,
+                        MetodoPago = "pedido",
+                        FechaVenta = DateTime.Now,
+                        TotalVenta = pedido.TotalPedido ?? 0,
+                        VentaDetalles = pedido.PedidoDetalles.Select(d => new VentaDetalle
+                        {
+                            FkIdProducto = d.FkIdProducto,
+                            CantidadProducto = d.CantidadPdetalles,
+                            PrecioUnitario = d.PrecioDetalles
+                        }).ToList()
+                    };
+
+                    _context.Ventas.Add(venta);
+                    break;
+
+                case 4:
+                    // 4 = RECHAZADO → regresar crédito, stock y guardar motivo
+
+                    // Regresar stock
+                    foreach (var d in pedido.PedidoDetalles)
+                    {
+                        var producto = await _context.Productos.FindAsync(d.FkIdProducto);
+                        if (producto != null)
+                            producto.CantidadProducto += d.CantidadPdetalles;
+                    }
+
+                    // Regresar crédito al alumno
+                    usuario.Credito += pedido.TotalPedido ?? 0;
+
+                    _context.HistorialCreditos.Add(new HistorialCredito
+                    {
+                        NumeroControlAfectado = usuario.NumeroControl,
+                        Monto = pedido.TotalPedido ?? 0,
+                        FechaMovimiento = DateTime.Now,
+                        AutCorreo = "Sistema-RechazoPedido"
+                    });
+
+                    // Revertir liquidación
+                    var liquidacion = await _context.Usuarios
+                        .FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
+
+                    if (liquidacion != null)
+                    {
+                        liquidacion.Credito -= pedido.TotalPedido ?? 0;
+
+                        _context.HistorialCreditos.Add(new HistorialCredito
+                        {
+                            NumeroControlAfectado = "liquidacion",
+                            Monto = -(pedido.TotalPedido ?? 0),
+                            FechaMovimiento = DateTime.Now,
+                            AutCorreo = "Sistema-RechazoPedido"
+                        });
+                    }
+
+                    // Guardar motivo
+                    pedido.MotivoRechazo = dto.Motivo;
+
+                    // Enviar correo al usuario
+                    await _emailService.EnviarCorreoRechazoPedidoAsync(
+                        usuario.CorreoUsuario,
+                        pedido.IdPedidos,
+                        dto.Motivo ?? "Sin motivo especificado",
+                        usuario.NombreUsuario
+                    );
+
+
+                    break;
+
+                case 5:
+                    // 5 = ENTREGADO
+                    // No se toca nada más
+                    break;
+
+                default:
+                    return BadRequest("Estado inválido.");
             }
 
-            // 5 = Entregado → solo marcar final
-            if (nuevoEstado == 5)
-            {
-                // No se modifica nada adicional, solo cierre lógico del pedido
-            }
+            // Actualizar estado
+            pedido.FkIdEstado = dto.NuevoEstado;
 
-            pedido.FkIdEstado = nuevoEstado;
             await _context.SaveChangesAsync();
 
-            return Ok(new { mensaje = $"Pedido actualizado a estado {nuevoEstado} correctamente." });
+            return Ok(new { mensaje = $"Pedido actualizado a estado {dto.NuevoEstado} correctamente." });
         }
 
 

@@ -29,5 +29,9 @@ namespace BackCafeteria.Models
         public virtual EstadoPedido FkIdEstadoNavigation { get; set; } = null!;
 
         public virtual ICollection<PedidoDetalle> PedidoDetalles { get; set; } = new List<PedidoDetalle>();
+
+        public string? MotivoRechazo { get; set; }
+
+
     }
 }
