@@ -319,7 +319,87 @@ namespace BackCafeteria.Controllers
                 $"HistorialCredito_{DateTime.Now:yyyyMMddHHmmss}.xlsx");
         }
 
+        [HttpPost("recuperar-contra/solicitar")]
+        public async Task<IActionResult> SolicitarRecuperacion([FromBody] PasswordResetRequestDTO dto)
+        {
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.CorreoUsuario == dto.Correo);
 
+            if (usuario == null)
+                return NotFound("No existe un usuario con ese correo.");
+
+            // Generar código
+            var random = new Random();
+            string codigo = random.Next(100000, 999999).ToString();
+
+            // Guardar en BD
+            var reset = new PasswordReset
+            {
+                Correo = dto.Correo,
+                Codigo = codigo,
+                Expiracion = DateTime.Now.AddMinutes(2)
+            };
+
+            _context.PasswordResets.Add(reset);
+            await _context.SaveChangesAsync();
+
+            // ENVIAR CORREO
+            await _email.EnviarCodigoRecuperacion(dto.Correo, codigo);
+
+            return Ok(new { mensaje = "Código enviado, revisa tu correo." });
+        }
+
+        [HttpPost("recuperar-contra/validar-codigo")]
+        public async Task<IActionResult> ValidarCodigo([FromBody] PasswordResetCodeDTO dto)
+        {
+            var registro = await _context.PasswordResets
+                .OrderByDescending(r => r.IdReset)
+                .FirstOrDefaultAsync(r => r.Correo == dto.Correo);
+
+            if (registro == null)
+                return NotFound("No se solicitó recuperación para este correo.");
+
+            if (registro.Expiracion < DateTime.Now)
+                return BadRequest("El código ha expirado.");
+
+            if (registro.Codigo != dto.Codigo)
+                return BadRequest("Código incorrecto.");
+
+            return Ok(new { mensaje = "Código correcto." });
+        }
+
+        [HttpPost("recuperar-contra/nueva")]
+        public async Task<IActionResult> GuardarNuevaContra([FromBody] PasswordResetNewPassDTO dto)
+        {
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.CorreoUsuario == dto.Correo);
+
+            if (usuario == null)
+                return NotFound("No existe un usuario con este correo.");
+
+            // Hashear nueva contraseña
+            usuario.ContraUsuario = BCrypt.Net.BCrypt.HashPassword(dto.NuevaContra);
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { mensaje = "Contraseña actualizada correctamente." });
+        }
+
+        [HttpGet("test-enviar-codigo/{correo}")]
+        public async Task<IActionResult> TestEnviarCodigo(string correo)
+        {
+            string codigo = new Random().Next(100000, 999999).ToString();
+
+            try
+            {
+                await _email.EnviarCodigoRecuperacion(correo, codigo);
+                return Ok(new { mensaje = "Correo enviado correctamente", codigoUsado = codigo });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message, inner = ex.InnerException?.Message });
+            }
+        }
 
 
 

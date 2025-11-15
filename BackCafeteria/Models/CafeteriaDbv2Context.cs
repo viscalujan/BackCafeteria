@@ -24,6 +24,9 @@ namespace BackCafeteria.Models
         public DbSet<PedidoDetalle> PedidoDetalles { get; set; } = null!;
         public DbSet<EstadoPedido> EstadosPedido { get; set; } = null!;
 
+        public DbSet<PasswordReset> PasswordResets { get; set; } = null!;
+
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -38,6 +41,8 @@ namespace BackCafeteria.Models
             modelBuilder.Entity<PedidoDetalle>().HasKey(pd => pd.IdPdetalles);
             modelBuilder.Entity<EstadoPedido>().HasKey(ep => ep.IdEstado);
             modelBuilder.Entity<HistorialCredito>().HasKey(h => h.IdHistorialCredito);
+            modelBuilder.Entity<PasswordReset>().HasKey(pr => pr.IdReset);
+
 
             // Relaciones
             modelBuilder.Entity<Venta>()

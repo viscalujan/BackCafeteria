@@ -153,6 +153,49 @@ namespace BackCafeteria.Services
             }
         }
 
+        public async Task EnviarCorreo(string correoDestino, string asunto, string cuerpoHtml)
+        {
+            string remitente = _settings.CorreoRemitente;
+            string clave = _settings.ClaveApp;
+
+            // Detectar configuración SMTP automáticamente
+            var (host, port, ssl) = ObtenerConfiguracionSMTP(remitente);
+
+            using var mail = new MailMessage
+            {
+                From = new MailAddress(remitente, "Cafetería TEC"),
+                Subject = asunto,
+                Body = cuerpoHtml,
+                IsBodyHtml = true
+            };
+
+            mail.To.Add(correoDestino);
+
+            using var client = new SmtpClient(host, port)
+            {
+                EnableSsl = ssl,
+                UseDefaultCredentials = false,
+                Credentials = new NetworkCredential(remitente, clave)
+            };
+
+            await client.SendMailAsync(mail);
+        }
+
+        public async Task EnviarCodigoRecuperacion(string correo, string codigo)
+        {
+            string asunto = "Recuperación de contraseña - Cafetería TEC";
+            string cuerpo = $@"
+        <h2>Recuperación de contraseña</h2>
+        <p>Tu código de verificación es:</p>
+        <h1 style='color:#007bff'>{codigo}</h1>
+        <p>Este código expira en <b>2 minutos</b>.</p>
+        <br/>
+        <small>Si no solicitaste el cambio de contraseña, ignora este mensaje.</small>";
+
+            await EnviarCorreo(correo, asunto, cuerpo);
+        }
+
+
 
 
     }
