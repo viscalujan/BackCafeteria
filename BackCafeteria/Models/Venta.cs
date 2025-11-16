@@ -25,6 +25,8 @@ namespace BackCafeteria.Models
         [ForeignKey("FkIdUsuario")]
         public virtual Usuario FkIdUsuarioNavigation { get; set; } = null!;
 
+        public int? FkIdPedido { get; set; }
+
         public virtual ICollection<VentaDetalle> VentaDetalles { get; set; } = new List<VentaDetalle>();
 
         // 🔹 Alias para compatibilidad con el controlador
@@ -34,5 +36,7 @@ namespace BackCafeteria.Models
             get => TotalVenta;
             set => TotalVenta = value;
         }
+
+
     }
 }

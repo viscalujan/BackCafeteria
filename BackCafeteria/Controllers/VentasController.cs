@@ -230,11 +230,68 @@ public class VentasController : ControllerBase
         if (venta == null)
             return NotFound("Venta no encontrada.");
 
-        // Ya cancelada
         if (venta.MetodoPago == "cancelado")
             return BadRequest("La venta ya está cancelada.");
 
-        // 1) Restaurar stock
+        // 🚨 SI LA VENTA PROVIENE DE UN PEDIDO
+        if (venta.FkIdPedido != null)
+        {
+            var pedido = await _context.Pedidos
+                .Include(p => p.PedidoDetalles)
+                .Include(p => p.FkIdUsuarioNavigation)
+                .FirstOrDefaultAsync(p => p.IdPedidos == venta.FkIdPedido);
+
+            if (pedido != null)
+            {
+                // Cambiar estado a RECHAZADO (4)
+                pedido.FkIdEstado = 4;
+
+                // Devolver stock
+                foreach (var d in pedido.PedidoDetalles)
+                {
+                    var producto = await _context.Productos.FindAsync(d.FkIdProducto);
+                    if (producto != null)
+                        producto.CantidadProducto += d.CantidadPdetalles;
+                }
+
+                // Devolver crédito al alumno
+                pedido.FkIdUsuarioNavigation.Credito += pedido.TotalPedido ?? 0;
+
+                _context.HistorialCreditos.Add(new HistorialCredito
+                {
+                    NumeroControlAfectado = pedido.FkIdUsuarioNavigation.NumeroControl,
+                    Monto = pedido.TotalPedido ?? 0,
+                    FechaMovimiento = DateTime.Now,
+                    AutCorreo = "Sistema-CancelacionPedido"
+                });
+
+                // Quitar crédito a liquidación
+                var liquidacion = await _context.Usuarios
+                    .FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
+
+                if (liquidacion != null)
+                {
+                    liquidacion.Credito -= pedido.TotalPedido ?? 0;
+
+                    _context.HistorialCreditos.Add(new HistorialCredito
+                    {
+                        NumeroControlAfectado = "liquidacion",
+                        Monto = -(pedido.TotalPedido ?? 0),
+                        FechaMovimiento = DateTime.Now,
+                        AutCorreo = "Sistema-CancelacionPedido"
+                    });
+                }
+            }
+
+            // Marcar venta como cancelada (sin revertir stock ni crédito)
+            venta.MetodoPago = "cancelado";
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { mensaje = "Pedido y venta cancelados correctamente." });
+        }
+
+        // 🚨 SI ES UNA VENTA NORMAL — Lógica original
         foreach (var d in venta.VentaDetalles)
         {
             var producto = await _context.Productos.FindAsync(d.FkIdProducto);
@@ -242,14 +299,12 @@ public class VentasController : ControllerBase
                 producto.CantidadProducto += d.CantidadProducto;
         }
 
-        // 2) Si fue por crédito → revertir crédito
         if (venta.MetodoPago == "credito")
         {
             var usuario = venta.FkIdUsuarioNavigation;
 
             if (usuario != null)
             {
-                // Regresar crédito al alumno
                 usuario.Credito += venta.TotalVenta;
 
                 _context.HistorialCreditos.Add(new HistorialCredito
@@ -261,7 +316,6 @@ public class VentasController : ControllerBase
                 });
             }
 
-            // Restar a liquidación
             var liquidacion = await _context.Usuarios
                 .FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
 
@@ -279,13 +333,13 @@ public class VentasController : ControllerBase
             }
         }
 
-        // 3) Marcar venta como cancelada SIN tocar BD ni agregar campos
         venta.MetodoPago = "cancelado";
-
         await _context.SaveChangesAsync();
 
         return Ok(new { mensaje = "Venta cancelada correctamente." });
     }
+
+
 
 
 }

@@ -171,13 +171,14 @@ namespace BackCafeteria.Controllers
                     break;
 
                 case 3:
-                    // 3 = LISTO → generar venta SIN afectar crédito
+                    // 3 = LISTO → generar venta sin afectar crédito
                     var venta = new Venta
                     {
                         FkIdUsuario = usuario.IdUsuario,
                         MetodoPago = "pedido",
                         FechaVenta = DateTime.Now,
                         TotalVenta = pedido.TotalPedido ?? 0,
+                        FkIdPedido = pedido.IdPedidos, // 🔥 GUARDAMOS EL ID DEL PEDIDO
                         VentaDetalles = pedido.PedidoDetalles.Select(d => new VentaDetalle
                         {
                             FkIdProducto = d.FkIdProducto,
