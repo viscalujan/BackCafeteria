@@ -35,6 +35,9 @@ namespace BackCafeteria.Models
         [Column("contra_usuario")]
         public string ContraUsuario { get; set; } = null!;
 
+        public int IniciosSesion { get; set; } = 0;
+
+
         // 🔹 Simulación de HuellaBase64
         [NotMapped]
         public string? HuellaBase64

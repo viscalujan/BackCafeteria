@@ -26,29 +26,69 @@ namespace BackCafeteria.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest login)
         {
-            // 🔹 1. Buscar en tabla Aut (admin, venta, inventario)
+            // ================================
+            // 1) LOGIN PARA ADMIN/VENTAS/INVENTARIO (tabla Aut)
+            // ================================
             var usuario = await _context.Aut.FirstOrDefaultAsync(u => u.CorreoAut == login.Correo);
-            if (usuario != null && BCrypt.Net.BCrypt.Verify(login.Contra, usuario.ContraAut))
-            {
-                var token = GenerarToken(usuario.NombreAut, usuario.RolAut ?? "admin");
-                return Ok(new { token, rol = usuario.RolAut });
-            }
 
-            // 🔹 2. Buscar en tabla Usuarios (alumnos)
-            var alumno = await _context.Usuarios.FirstOrDefaultAsync(u => u.CorreoUsuario == login.Correo);
-            if (alumno != null && BCrypt.Net.BCrypt.Verify(login.Contra, alumno.ContraUsuario))
+            if (usuario != null)
             {
-                var token = GenerarToken(alumno.NombreUsuario, "alumno", alumno.NumeroControl);
+                if (!BCrypt.Net.BCrypt.Verify(login.Contra, usuario.ContraAut))
+                    return Unauthorized(new { mensaje = "Contraseña incorrecta" });
+
+                var token = GenerarToken(usuario.NombreAut, usuario.RolAut ?? "admin");
+
                 return Ok(new
                 {
                     token,
-                    rol = "alumno",
-                    numeroControl = alumno.NumeroControl  // Ahora es string, compatible
+                    rol = usuario.RolAut,
+                    tipoUsuario = "admin"
                 });
             }
 
-            return Unauthorized(new { mensaje = "Usuario o contraseña incorrectos" });
+            // ================================
+            // 2) LOGIN PARA ALUMNOS (tabla Usuarios)
+            // ================================
+            var alumno = await _context.Usuarios.FirstOrDefaultAsync(u => u.CorreoUsuario == login.Correo);
+
+            if (alumno == null)
+                return Unauthorized(new { mensaje = "Usuario o contraseña incorrectos" });
+
+            if (!BCrypt.Net.BCrypt.Verify(login.Contra, alumno.ContraUsuario))
+                return Unauthorized(new { mensaje = "Contraseña incorrecta" });
+
+            // ================================
+            // AQUI ENTRA LA LÓGICA DE PRIMERA VEZ
+            // ================================
+            if (alumno.IniciosSesion == 0)
+            {
+                return Ok(new
+                {
+                    requiereCambio = true,
+                    modo = "primerInicio",
+                    mensaje = "Debes cambiar tu contraseña temporal antes de continuar.",
+                    numeroControl = alumno.NumeroControl,
+                    tipoUsuario = "alumno"
+                });
+            }
+
+
+            // SI NO ES SU PRIMERA VEZ → LOGIN NORMAL
+            alumno.IniciosSesion += 1;
+            await _context.SaveChangesAsync();
+
+            var tokenAlumno = GenerarToken(alumno.NombreUsuario!, "alumno", alumno.NumeroControl);
+
+            return Ok(new
+            {
+                token = tokenAlumno,
+                rol = "alumno",
+                numeroControl = alumno.NumeroControl,
+                tipoUsuario = "alumno",
+                iniciosSesion = alumno.IniciosSesion
+            });
         }
+
 
         // ================= REGISTRO ADMIN =================
         [HttpPost("register")]

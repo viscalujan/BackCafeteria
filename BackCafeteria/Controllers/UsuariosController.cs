@@ -42,8 +42,11 @@ namespace BackCafeteria.Controllers
             if (nuevo.Credito < 50)
                 return BadRequest("El crédito inicial debe ser al menos 50.");
 
-            // 1) Generar QR (hash + PNG)
+            // 1. Generar QR
             var (_, qrPngBytes, hashQR) = QRHelper.GenerarCodigoQR(nuevo.NumeroControl);
+
+            // 2. Generar contraseña temporal
+            string contraTemporal = PasswordHelper.GenerarContraseñaTemporal();
 
             var usuario = new Usuario
             {
@@ -51,15 +54,22 @@ namespace BackCafeteria.Controllers
                 CorreoUsuario = nuevo.Correo,
                 NumeroControl = nuevo.NumeroControl,
                 RolUsuario = "alumno",
-                ContraUsuario = BCrypt.Net.BCrypt.HashPassword(nuevo.Contra),
+
+                // ⚠️ Guardar contraseña temporal hasheada
+                ContraUsuario = BCrypt.Net.BCrypt.HashPassword(contraTemporal),
+
                 Credito = nuevo.Credito,
-                CodigoQRTexto = hashQR,                          // hash (64 chars)
-                Huella = Convert.ToBase64String(qrPngBytes)      // PNG en Base64
+                CodigoQRTexto = hashQR,
+                Huella = Convert.ToBase64String(qrPngBytes),
+
+                // ⚠️ Campo nuevo
+                IniciosSesion = 0
             };
 
             _context.Usuarios.Add(usuario);
             await _context.SaveChangesAsync();
 
+            // Registrar historial de crédito
             _context.HistorialCreditos!.Add(new HistorialCredito
             {
                 NumeroControlAfectado = usuario.NumeroControl,
@@ -67,13 +77,24 @@ namespace BackCafeteria.Controllers
                 FechaMovimiento = DateTime.Now,
                 AutCorreo = "Sistema"
             });
+
             await _context.SaveChangesAsync();
 
-            // 2) Enviar por correo el PNG adjunto
-            _email.EnviarCorreoConQR(usuario.CorreoUsuario!, qrPngBytes);
+            // 3. Enviar correo con QR + contraseña temporal
+            await _email.EnviarCredencialesIniciales(
+                usuario.CorreoUsuario!,
+                usuario.NombreUsuario!,
+                contraTemporal,
+                qrPngBytes
+            );
 
-            return Ok(new { mensaje = "Usuario registrado y QR enviado.", usuarioId = usuario.IdUsuario });
+            return Ok(new
+            {
+                mensaje = "Usuario registrado. Se enviaron sus credenciales y QR.",
+                usuarioId = usuario.IdUsuario
+            });
         }
+
 
         // ================= POST: Aumentar crédito =================
         [HttpPost("aumentar-credito")]
@@ -379,6 +400,8 @@ namespace BackCafeteria.Controllers
 
             // Hashear nueva contraseña
             usuario.ContraUsuario = BCrypt.Net.BCrypt.HashPassword(dto.NuevaContra);
+
+            usuario.IniciosSesion = 1;
 
             await _context.SaveChangesAsync();
 

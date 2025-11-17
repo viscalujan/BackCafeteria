@@ -195,11 +195,55 @@ namespace BackCafeteria.Services
             await EnviarCorreo(correo, asunto, cuerpo);
         }
 
+        public async Task EnviarCredencialesIniciales(
+    string correo,
+    string nombre,
+    string contraTemporal,
+    byte[] qrPngBytes)
+        {
+            string remitente = _settings.CorreoRemitente;
+            string asunto = "Bienvenido a Cafetería TEC – Credenciales iniciales";
+
+            string cuerpo = $@"
+        <h2>Hola {nombre}, bienvenido 👋</h2>
+        <p>Tu cuenta ha sido creada correctamente.</p>
+
+        <p><b>Contraseña temporal:</b> {contraTemporal}</p>
+        <p>En tu primer inicio de sesión deberás cambiarla por seguridad.</p>
+
+        <br/>
+        <p>Aquí está tu código QR para comprar en la cafetería:</p>
+    ";
+
+            var (host, port, ssl) = ObtenerConfiguracionSMTP(remitente);
+
+            using var mail = new MailMessage
+            {
+                From = new MailAddress(remitente, "Cafetería TEC"),
+                Subject = asunto,
+                Body = cuerpo,
+                IsBodyHtml = true
+            };
+
+            mail.To.Add(correo);
+
+            // Adjuntar QR
+            using var ms = new MemoryStream(qrPngBytes);
+            var adj = new Attachment(ms, "QR.png", "image/png");
+            mail.Attachments.Add(adj);
+
+            using var client = new SmtpClient(host, port)
+            {
+                EnableSsl = ssl,
+                UseDefaultCredentials = false,
+                Credentials = new NetworkCredential(remitente, _settings.ClaveApp)
+            };
+
+            await client.SendMailAsync(mail);
+        }
 
 
 
     }
 }
-    // ===========================
-    // ⚙️ MODELO DE CONFIGURACIÓN
-    // ===========================
+
