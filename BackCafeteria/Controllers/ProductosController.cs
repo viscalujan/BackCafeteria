@@ -48,7 +48,7 @@ namespace BackCafeteria.Controllers
 
             producto.Nombre = productoUpdate.Nombre;
             producto.Precio = productoUpdate.Precio;
-
+            producto.CantidadProducto = productoUpdate.CantidadProducto;
             _context.SaveChanges();
             return Ok(producto);
         }
