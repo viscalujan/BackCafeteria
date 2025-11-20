@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using BackCafeteria.Services;
 
-
 namespace BackCafeteria.Controllers
 {
     [ApiController]
@@ -16,7 +15,6 @@ namespace BackCafeteria.Controllers
         private readonly CafeteriaDbv2Context _context;
         private readonly EmailService _emailService;
 
-
         public PedidosController(CafeteriaDbv2Context context, EmailService emailService)
         {
             _context = context;
@@ -25,7 +23,7 @@ namespace BackCafeteria.Controllers
 
         // 🔹 Crear pedido (rol alumno)
         [HttpPost]
-       // [Authorize(Roles = "alumno")]
+        // [Authorize(Roles = "alumno")]
         public async Task<IActionResult> CrearPedido([FromBody] PedidoCreateDTO dto)
         {
             if (dto.Detalles == null || !dto.Detalles.Any())
@@ -40,9 +38,17 @@ namespace BackCafeteria.Controllers
 
             foreach (var item in dto.Detalles)
             {
+                // Agregar restricción: no permitir cantidades menores o iguales a 0
+                if (item.Cantidad <= 0)
+                    return BadRequest($"La cantidad para el producto {item.ProductoId} debe ser mayor a 0.");
+
                 var producto = await _context.Productos.FindAsync(item.ProductoId);
                 if (producto == null)
                     return NotFound($"Producto {item.ProductoId} no existe.");
+
+                // Agregar restricción: verificar que el precio del producto no sea menor o igual a 0 (aunque idealmente se valide en el modelo)
+                if (producto.Precio <= 0)
+                    return BadRequest($"El precio del producto {producto.Nombre} debe ser mayor a 0.");
 
                 if (producto.CantidadProducto < item.Cantidad)
                     return BadRequest($"No hay stock suficiente de {producto.Nombre}.");
@@ -56,6 +62,10 @@ namespace BackCafeteria.Controllers
                     PrecioDetalles = producto.Precio
                 });
             }
+
+            // Agregar restricción: el total calculado no debe ser menor o igual a 0
+            if (total <= 0)
+                return BadRequest("El total del pedido debe ser mayor a 0.");
 
             if (usuario.Credito < total)
                 return BadRequest("Crédito insuficiente para realizar el pedido.");
@@ -93,7 +103,6 @@ namespace BackCafeteria.Controllers
                 AutCorreo = "Sistema-Pedido"
             });
 
-
             var pedido = new Pedido
             {
                 FkIdUsuario = usuario.IdUsuario,
@@ -121,7 +130,7 @@ namespace BackCafeteria.Controllers
 
         // 🔹 Obtener pedidos (alumno)
         [HttpGet("usuario/{idUsuario}")]
-       // [Authorize(Roles = "alumno")]
+        // [Authorize(Roles = "alumno")]
         public async Task<IActionResult> GetPedidosPorUsuario(int idUsuario)
         {
             var pedidos = await _context.Pedidos
@@ -240,7 +249,6 @@ namespace BackCafeteria.Controllers
                         usuario.NombreUsuario
                     );
 
-
                     break;
 
                 case 5:
@@ -259,7 +267,6 @@ namespace BackCafeteria.Controllers
 
             return Ok(new { mensaje = $"Pedido actualizado a estado {dto.NuevoEstado} correctamente." });
         }
-
 
         // 🔹 Obtener todos los pedidos (rol ventas)
         [HttpGet("todos")]

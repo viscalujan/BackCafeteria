@@ -20,6 +20,7 @@ namespace BackCafeteria.Controllers
             var productos = _context.Productos.ToList();
             return Ok(productos);
         }
+
         [HttpGet("{id}")]
         public async Task<ActionResult<Producto>> GetProducto(int id)
         {
@@ -28,16 +29,19 @@ namespace BackCafeteria.Controllers
             return producto;
         }
 
-
-
         [HttpPost]
         public IActionResult CrearProducto([FromBody] Producto producto)
         {
+            // Agregar restricciones: no permitir precio menor o igual a 0, ni cantidad negativa
+            if (producto.Precio <= 0)
+                return BadRequest("El precio del producto debe ser mayor a 0.");
+            if (producto.CantidadProducto < 0)
+                return BadRequest("La cantidad del producto no puede ser negativa.");
+
             _context.Productos.Add(producto);
             _context.SaveChanges();
             return Ok(producto);
         }
-
 
         [HttpPut("{id}")]
         public IActionResult ActualizarProducto(int id, [FromBody] Producto productoUpdate)
@@ -45,6 +49,12 @@ namespace BackCafeteria.Controllers
             var producto = _context.Productos.Find(id);
             if (producto == null)
                 return NotFound();
+
+            // Agregar restricciones: no permitir precio menor o igual a 0, ni cantidad negativa
+            if (productoUpdate.Precio <= 0)
+                return BadRequest("El precio del producto debe ser mayor a 0.");
+            if (productoUpdate.CantidadProducto < 0)
+                return BadRequest("La cantidad del producto no puede ser negativa.");
 
             producto.Nombre = productoUpdate.Nombre;
             producto.Precio = productoUpdate.Precio;

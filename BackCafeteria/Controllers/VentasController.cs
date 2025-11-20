@@ -23,8 +23,6 @@ public class VentasController : ControllerBase
         _emailService = emailService;
     }
 
-
-
     [HttpPost]
     public async Task<IActionResult> CrearVenta([FromBody] VentaCreateDTO dto)
     {
@@ -37,9 +35,17 @@ public class VentasController : ControllerBase
         // 🔹 Calcular total y restar stock
         foreach (var item in dto.Detalles)
         {
+            // Agregar restricción: no permitir cantidades menores o iguales a 0
+            if (item.Cantidad <= 0)
+                return BadRequest($"La cantidad para el producto {item.ProductoId} debe ser mayor a 0.");
+
             var producto = await _context.Productos.FindAsync(item.ProductoId);
             if (producto == null)
                 return NotFound($"Producto con ID {item.ProductoId} no encontrado.");
+
+            // Agregar restricción: verificar que el precio del producto no sea menor o igual a 0
+            if (producto.Precio <= 0)
+                return BadRequest($"El precio del producto {producto.Nombre} debe ser mayor a 0.");
 
             if (producto.CantidadProducto < item.Cantidad)
                 return BadRequest($"Stock insuficiente para el producto {producto.Nombre}.");
@@ -55,6 +61,10 @@ public class VentasController : ControllerBase
                 PrecioUnitario = producto.Precio
             });
         }
+
+        // Agregar restricción: el total calculado no debe ser menor o igual a 0
+        if (total <= 0)
+            return BadRequest("El total de la venta debe ser mayor a 0.");
 
         Usuario? usuario = null;
         string metodo = dto.MetodoPago.ToLower();
@@ -143,7 +153,6 @@ public class VentasController : ControllerBase
         });
     }
 
-
     [HttpGet("numeroControl/{numero}")]
     public async Task<ActionResult<Usuario>> GetUsuarioPorNumeroControl(string numero)
     {
@@ -190,7 +199,6 @@ public class VentasController : ControllerBase
 
         return Ok(ventas);
     }
-
 
     [HttpGet("reporte-detallado")]
     public async Task<ActionResult> GetReporteDetallado([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
@@ -338,8 +346,4 @@ public class VentasController : ControllerBase
 
         return Ok(new { mensaje = "Venta cancelada correctamente." });
     }
-
-
-
-
 }
