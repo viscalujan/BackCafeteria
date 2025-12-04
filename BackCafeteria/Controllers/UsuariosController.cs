@@ -12,9 +12,9 @@ using System.ComponentModel;
 
 namespace BackCafeteria.Controllers
 {
-   [ApiController]
+    [ApiController]
     [Route("api/[controller]")]
-    //[Authorize(Roles = "inventario,ventas")]
+    [Authorize(Roles = "financiero,admin")]
     public class UsuariosController : ControllerBase
     {
         private readonly CafeteriaDbv2Context _context;
@@ -341,6 +341,7 @@ namespace BackCafeteria.Controllers
         }
 
         [HttpPost("recuperar-contra/solicitar")]
+        [AllowAnonymous]
         public async Task<IActionResult> SolicitarRecuperacion([FromBody] PasswordResetRequestDTO dto)
         {
             var usuario = await _context.Usuarios
@@ -371,6 +372,7 @@ namespace BackCafeteria.Controllers
         }
 
         [HttpPost("recuperar-contra/validar-codigo")]
+        [AllowAnonymous]
         public async Task<IActionResult> ValidarCodigo([FromBody] PasswordResetCodeDTO dto)
         {
             var registro = await _context.PasswordResets
@@ -390,6 +392,7 @@ namespace BackCafeteria.Controllers
         }
 
         [HttpPost("recuperar-contra/nueva")]
+        [AllowAnonymous]
         public async Task<IActionResult> GuardarNuevaContra([FromBody] PasswordResetNewPassDTO dto)
         {
             var usuario = await _context.Usuarios
@@ -409,6 +412,7 @@ namespace BackCafeteria.Controllers
         }
 
         [HttpGet("test-enviar-codigo/{correo}")]
+        [AllowAnonymous]
         public async Task<IActionResult> TestEnviarCodigo(string correo)
         {
             string codigo = new Random().Next(100000, 999999).ToString();
@@ -423,8 +427,5 @@ namespace BackCafeteria.Controllers
                 return BadRequest(new { error = ex.Message, inner = ex.InnerException?.Message });
             }
         }
-
-
-
     }
 }

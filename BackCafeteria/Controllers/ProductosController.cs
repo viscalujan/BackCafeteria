@@ -1,10 +1,12 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using BackCafeteria.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace BackCafeteria.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize(Roles = "productos")]
     public class ProductosController : ControllerBase
     {
         private readonly CafeteriaDbv2Context _context;
@@ -37,6 +39,10 @@ namespace BackCafeteria.Controllers
                 return BadRequest("El precio del producto debe ser mayor a 0.");
             if (producto.CantidadProducto < 0)
                 return BadRequest("La cantidad del producto no puede ser negativa.");
+
+            // Verificar si el ID ya existe
+            if (_context.Productos.Any(p => p.Id == producto.Id))
+                return BadRequest($"El ID {producto.Id} ya existe. Por favor, utiliza un ID diferente o deja que el sistema lo asigne automáticamente.");
 
             _context.Productos.Add(producto);
             _context.SaveChanges();

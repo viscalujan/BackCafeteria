@@ -23,7 +23,7 @@ namespace BackCafeteria.Controllers
 
         // 🔹 Crear pedido (rol alumno)
         [HttpPost]
-        // [Authorize(Roles = "alumno")]
+        [Authorize(Roles = "alumno")]
         public async Task<IActionResult> CrearPedido([FromBody] PedidoCreateDTO dto)
         {
             if (dto.Detalles == null || !dto.Detalles.Any())
@@ -130,7 +130,7 @@ namespace BackCafeteria.Controllers
 
         // 🔹 Obtener pedidos (alumno)
         [HttpGet("usuario/{idUsuario}")]
-        // [Authorize(Roles = "alumno")]
+        [Authorize(Roles = "alumno")]
         public async Task<IActionResult> GetPedidosPorUsuario(int idUsuario)
         {
             var pedidos = await _context.Pedidos
@@ -160,6 +160,7 @@ namespace BackCafeteria.Controllers
 
         // 🔹 Cambiar estado del pedido (rol ventas)
         [HttpPut("{idPedido}/estado")]
+        [Authorize(Roles = "ventas")]
         public async Task<IActionResult> CambiarEstado(int idPedido, [FromBody] CambioEstadoPedidoDTO dto)
         {
             var pedido = await _context.Pedidos
@@ -270,7 +271,7 @@ namespace BackCafeteria.Controllers
 
         // 🔹 Obtener todos los pedidos (rol ventas)
         [HttpGet("todos")]
-        //[Authorize(Roles = "ventas")]
+        [Authorize(Roles = "ventas")]
         public async Task<IActionResult> GetTodosPedidos()
         {
             var pedidos = await _context.Pedidos

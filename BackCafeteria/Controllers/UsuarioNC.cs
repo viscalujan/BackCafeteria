@@ -14,9 +14,9 @@ using System.Threading.Tasks;
 
 namespace BackCafeteria.Controllers
 {
-   [ApiController]
-   [Route("api/[controller]")]
-    //[Authorize(Roles = "alumno")]
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize(Roles = "alumno")]
     public class UsuarioNCController : ControllerBase
     {
         private readonly CafeteriaDbv2Context _context;
@@ -267,8 +267,5 @@ namespace BackCafeteria.Controllers
                 hash = hashQR
             });
         }
-
-
-
     }
 }
