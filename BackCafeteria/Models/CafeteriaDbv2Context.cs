@@ -18,6 +18,10 @@ namespace BackCafeteria.Models
         public DbSet<VentaDetalle> VentaDetalles { get; set; } = null!;
         public virtual DbSet<HistorialCredito> HistorialCreditos { get; set; }
 
+        public virtual DbSet<ConfiguracionComision> ConfiguracionComisiones { get; set; }
+
+
+
 
         // Si tienes pedidos y estados:
         public DbSet<Pedido> Pedidos { get; set; } = null!;
