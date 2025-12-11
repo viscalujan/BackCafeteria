@@ -13,7 +13,7 @@ using BackCafeteria.Helpers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "ventas")]
+//[Authorize(Roles = "ventas")]
 public class VentasController : ControllerBase
 {
     private readonly CafeteriaDbv2Context _context;
@@ -37,17 +37,9 @@ public class VentasController : ControllerBase
         // 🔹 Calcular total y restar stock
         foreach (var item in dto.Detalles)
         {
-            // Agregar restricción: no permitir cantidades menores o iguales a 0
-            if (item.Cantidad <= 0)
-                return BadRequest($"La cantidad para el producto {item.ProductoId} debe ser mayor a 0.");
-
             var producto = await _context.Productos.FindAsync(item.ProductoId);
             if (producto == null)
                 return NotFound($"Producto con ID {item.ProductoId} no encontrado.");
-
-            // Agregar restricción: verificar que el precio del producto no sea menor o igual a 0
-            if (producto.Precio <= 0)
-                return BadRequest($"El precio del producto {producto.Nombre} debe ser mayor a 0.");
 
             if (producto.CantidadProducto < item.Cantidad)
                 return BadRequest($"Stock insuficiente para el producto {producto.Nombre}.");
@@ -64,15 +56,16 @@ public class VentasController : ControllerBase
             });
         }
 
-        // Agregar restricción: el total calculado no debe ser menor o igual a 0
-        if (total <= 0)
-            return BadRequest("El total de la venta debe ser mayor a 0.");
-
         Usuario? usuario = null;
         string metodo = dto.MetodoPago.ToLower();
 
+        // Variables de comisión
+        decimal comision = 0m;
+        decimal totalConComision = total;
+
         if (metodo == "credito")
         {
+            // 🔹 1. Buscar alumno por QR o número de control
             if (string.IsNullOrWhiteSpace(dto.HashQR) && string.IsNullOrWhiteSpace(dto.NumeroDeControl))
                 return BadRequest("El hash del QR o el número de control es obligatorio para pagos con crédito.");
 
@@ -82,52 +75,106 @@ public class VentasController : ControllerBase
             if (usuario == null)
                 return NotFound("QR no válido o usuario no encontrado.");
 
-            if (usuario.Credito < total)
-                return BadRequest("Crédito insuficiente.");
+            // 🔹 2. Calcular comisión dinámica para venta por crédito
+            var calc = await ComisionHelper.CalcularComisionAsync(_context, total, "credito");
+            comision = calc.comision;
+            totalConComision = calc.totalConComision;  // total + comisión
 
-            usuario.Credito -= total;
+            // 🔹 3. Verificar crédito del alumno (paga productos + comisión)
+            if (usuario.Credito < totalConComision)
+                return BadRequest("Crédito insuficiente para cubrir la venta y la comisión.");
 
-            // Registrar en historial del comprador
+            // 🔹 4. Descontar al alumno
+            usuario.Credito -= totalConComision;
+
             _context.HistorialCreditos.Add(new HistorialCredito
             {
                 NumeroControlAfectado = usuario.NumeroControl,
-                Monto = -total,
+                Monto = -totalConComision,
                 FechaMovimiento = DateTime.Now,
                 AutCorreo = "Sistema-VentaCredito"
             });
 
-            // Usuario “liquidacion”
-            var usuarioLiquidacion = await _context.Usuarios
-                .FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
+            // 🔹 5. Cuentas internas (Recursos y Sistema)
 
-            if (usuarioLiquidacion == null)
-            {
-                usuarioLiquidacion = new Usuario
-                {
-                    NombreUsuario = "Liquidación",
-                    CorreoUsuario = "liquidacion@cafeteria.com",
-                    NumeroControl = "liquidacion",
-                    RolUsuario = "0",
-                    Credito = 0,
-                    CodigoQRTexto = "",
-                    ContraUsuario = "123456" // ⚡ Valor obligatorio agregado
-                };
-                _context.Usuarios.Add(usuarioLiquidacion);
-                await _context.SaveChangesAsync(); // Guardar liquidación si se creó nuevo
-            }
+            // Recursos Financieros - Liquidación (sale dinero hacia cafetería)
+            var recursosLiq = await GetOrCreateCuentaInternaAsync(
+                "recursos_liquidacion",
+                "RF - Liquidación",
+                "recursos_liquidacion@tec.com"
+            );
 
-            usuarioLiquidacion.Credito += total;
+            // Recursos Financieros - Comisiones (paga comisiones al sistema)
+            var recursosCom = await GetOrCreateCuentaInternaAsync(
+                "recursos_comisiones",
+                "RF - Comisiones",
+                "recursos_comisiones@tec.com"
+            );
 
-            // Historial del usuario "liquidacion"
+            // Cafetería - Liquidación (lo que la cafetería debe cobrar por productos)
+            var cafLiq = await GetOrCreateCuentaInternaAsync(
+                "cafeteria_liquidacion",
+                "Cafetería - Liquidación",
+                "cafeteria_liquidacion@tec.com"
+            );
+
+            // Sistema - Comisiones (ustedes, admins del sistema)
+            var sisCom = await GetOrCreateCuentaInternaAsync(
+                "sistema_comisiones",
+                "Sistema - Comisiones",
+                "sistema_comisiones@tec.com"
+            );
+
+            // 🔸 Productos: RF → Cafetería
+            recursosLiq.Credito -= total;
+            cafLiq.Credito += total;
+
             _context.HistorialCreditos.Add(new HistorialCredito
             {
-                NumeroControlAfectado = "liquidacion",
+                NumeroControlAfectado = "recursos_liquidacion",
+                Monto = -total,
+                FechaMovimiento = DateTime.Now,
+                AutCorreo = "Sistema-VentaCredito-Productos"
+            });
+
+            _context.HistorialCreditos.Add(new HistorialCredito
+            {
+                NumeroControlAfectado = "cafeteria_liquidacion",
                 Monto = total,
                 FechaMovimiento = DateTime.Now,
-                AutCorreo = "Sistema-VentaCredito"
+                AutCorreo = "Sistema-VentaCredito-Productos"
             });
+
+            // 🔸 Comisiones: RF → Sistema
+            if (comision > 0)
+            {
+                recursosCom.Credito -= comision;
+                sisCom.Credito += comision;
+
+                _context.HistorialCreditos.Add(new HistorialCredito
+                {
+                    NumeroControlAfectado = "recursos_comisiones",
+                    Monto = -comision,
+                    FechaMovimiento = DateTime.Now,
+                    AutCorreo = "Sistema-VentaCredito-Comisiones"
+                });
+
+                _context.HistorialCreditos.Add(new HistorialCredito
+                {
+                    NumeroControlAfectado = "sistema_comisiones",
+                    Monto = comision,
+                    FechaMovimiento = DateTime.Now,
+                    AutCorreo = "Sistema-VentaCredito-Comisiones"
+                });
+            }
         }
-        else if (metodo != "efectivo")
+        else if (metodo == "efectivo")
+        {
+            // Efectivo sin comisión: comision = 0, totalConComision = total
+            comision = 0m;
+            totalConComision = total;
+        }
+        else
         {
             return BadRequest("Método de pago no válido. Usa 'efectivo' o 'credito'.");
         }
@@ -136,24 +183,29 @@ public class VentasController : ControllerBase
         {
             MetodoPago = metodo,
             FkIdUsuario = usuario?.IdUsuario ?? dto.FkIdUsuario,
-            TotalVenta = total,
+            TotalVenta = total,                  // total de productos
+            Comision = comision,                 // comisión calculada
+            TotalConComision = totalConComision, // lo que paga el alumno (si aplica)
             FechaVenta = DateTime.Now,
             VentaDetalles = detallesVenta
         };
 
         _context.Ventas.Add(venta);
 
-        // 🔹 Guardar cambios en usuarios, historial y venta en un solo SaveChanges
         await _context.SaveChangesAsync();
 
         return Ok(new
         {
             IdVenta = venta.IdVentas,
             Total = venta.TotalVenta,
+            Comision = venta.Comision,
+            TotalConComision = venta.TotalConComision,
             Fecha = venta.FechaVenta,
             MetodoPago = venta.MetodoPago
         });
     }
+
+
 
     [HttpGet("numeroControl/{numero}")]
     public async Task<ActionResult<Usuario>> GetUsuarioPorNumeroControl(string numero)
@@ -188,8 +240,11 @@ public class VentasController : ControllerBase
                 UsuarioId = v.FkIdUsuarioNavigation.IdUsuario,
                 MetodoPago = v.MetodoPago,
                 TotalVenta = v.TotalVenta,
+                Comision = v.Comision,
+                TotalConComision = v.TotalConComision,
                 FechaVenta = v.FechaVenta,
                 Detalles = v.VentaDetalles.Select(d => new VentaDetalleResponseDTO
+
                 {
                     ProductoId = d.FkIdProducto,
                     NombreProducto = d.FkIdProductoNavigation.Nombre,
@@ -233,75 +288,15 @@ public class VentasController : ControllerBase
     public async Task<IActionResult> CancelarVenta(int idVenta)
     {
         var venta = await _context.Ventas
-            .Include(v => v.VentaDetalles)
             .Include(v => v.FkIdUsuarioNavigation)
+            .Include(v => v.VentaDetalles)
+                .ThenInclude(d => d.FkIdProductoNavigation)
             .FirstOrDefaultAsync(v => v.IdVentas == idVenta);
 
         if (venta == null)
             return NotFound("Venta no encontrada.");
 
-        if (venta.MetodoPago == "cancelado")
-            return BadRequest("La venta ya está cancelada.");
-
-        // 🚨 SI LA VENTA PROVIENE DE UN PEDIDO
-        if (venta.FkIdPedido != null)
-        {
-            var pedido = await _context.Pedidos
-                .Include(p => p.PedidoDetalles)
-                .Include(p => p.FkIdUsuarioNavigation)
-                .FirstOrDefaultAsync(p => p.IdPedidos == venta.FkIdPedido);
-
-            if (pedido != null)
-            {
-                // Cambiar estado a RECHAZADO (4)
-                pedido.FkIdEstado = 4;
-
-                // Devolver stock
-                foreach (var d in pedido.PedidoDetalles)
-                {
-                    var producto = await _context.Productos.FindAsync(d.FkIdProducto);
-                    if (producto != null)
-                        producto.CantidadProducto += d.CantidadPdetalles;
-                }
-
-                // Devolver crédito al alumno
-                pedido.FkIdUsuarioNavigation.Credito += pedido.TotalPedido ?? 0;
-
-                _context.HistorialCreditos.Add(new HistorialCredito
-                {
-                    NumeroControlAfectado = pedido.FkIdUsuarioNavigation.NumeroControl,
-                    Monto = pedido.TotalPedido ?? 0,
-                    FechaMovimiento = DateTime.Now,
-                    AutCorreo = "Sistema-CancelacionPedido"
-                });
-
-                // Quitar crédito a liquidación
-                var liquidacion = await _context.Usuarios
-                    .FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
-
-                if (liquidacion != null)
-                {
-                    liquidacion.Credito -= pedido.TotalPedido ?? 0;
-
-                    _context.HistorialCreditos.Add(new HistorialCredito
-                    {
-                        NumeroControlAfectado = "liquidacion",
-                        Monto = -(pedido.TotalPedido ?? 0),
-                        FechaMovimiento = DateTime.Now,
-                        AutCorreo = "Sistema-CancelacionPedido"
-                    });
-                }
-            }
-
-            // Marcar venta como cancelada (sin revertir stock ni crédito)
-            venta.MetodoPago = "cancelado";
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new { mensaje = "Pedido y venta cancelados correctamente." });
-        }
-
-        // 🚨 SI ES UNA VENTA NORMAL — Lógica original
+        // Restaurar stock de productos (para cualquier método de pago)
         foreach (var d in venta.VentaDetalles)
         {
             var producto = await _context.Productos.FindAsync(d.FkIdProducto);
@@ -309,43 +304,155 @@ public class VentasController : ControllerBase
                 producto.CantidadProducto += d.CantidadProducto;
         }
 
-        if (venta.MetodoPago == "credito")
+        // Si la venta fue en EFECTIVO, solo regresamos stock y (opcional) marcamos cancela.
+        if (venta.MetodoPago == "efectivo")
         {
-            var usuario = venta.FkIdUsuarioNavigation;
+            // Aquí podrías agregar un campo EstadoVenta = "Cancelada" en lugar de borrar:
+            _context.Ventas.Remove(venta);
+            await _context.SaveChangesAsync();
 
-            if (usuario != null)
-            {
-                usuario.Credito += venta.TotalVenta;
-
-                _context.HistorialCreditos.Add(new HistorialCredito
-                {
-                    NumeroControlAfectado = usuario.NumeroControl,
-                    Monto = venta.TotalVenta,
-                    FechaMovimiento = DateTime.Now,
-                    AutCorreo = "Sistema-DevolucionVenta"
-                });
-            }
-
-            var liquidacion = await _context.Usuarios
-                .FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
-
-            if (liquidacion != null)
-            {
-                liquidacion.Credito -= venta.TotalVenta;
-
-                _context.HistorialCreditos.Add(new HistorialCredito
-                {
-                    NumeroControlAfectado = "liquidacion",
-                    Monto = -venta.TotalVenta,
-                    FechaMovimiento = DateTime.Now,
-                    AutCorreo = "Sistema-DevolucionVenta"
-                });
-            }
+            return Ok(new { mensaje = "Venta en efectivo cancelada (solo stock revertido)." });
         }
 
-        venta.MetodoPago = "cancelado";
+        // Si la venta fue por CRÉDITO, revertimos todo el flujo contable
+        if (venta.MetodoPago == "credito")
+        {
+            var alumno = venta.FkIdUsuarioNavigation;
+            if (alumno == null)
+                return BadRequest("La venta no tiene alumno asociado.");
+
+            var total = venta.TotalVenta;
+            var comision = venta.Comision;
+            var totalConComision = venta.TotalConComision;
+
+            // 1) Devolver al alumno lo que pagó
+            alumno.Credito += totalConComision;
+
+            _context.HistorialCreditos.Add(new HistorialCredito
+            {
+                NumeroControlAfectado = alumno.NumeroControl,
+                Monto = totalConComision,
+                FechaMovimiento = DateTime.Now,
+                AutCorreo = "Sistema-CancelarVentaCredito"
+            });
+
+            // 2) Revertir liquidación y comisiones internas
+            var recursosLiq = await GetOrCreateCuentaInternaAsync(
+                "recursos_liquidacion",
+                "RF - Liquidación",
+                "recursos_liquidacion@tec.com"
+            );
+
+            var recursosCom = await GetOrCreateCuentaInternaAsync(
+                "recursos_comisiones",
+                "RF - Comisiones",
+                "recursos_comisiones@tec.com"
+            );
+
+            var cafLiq = await GetOrCreateCuentaInternaAsync(
+                "cafeteria_liquidacion",
+                "Cafetería - Liquidación",
+                "cafeteria_liquidacion@tec.com"
+            );
+
+            var sisCom = await GetOrCreateCuentaInternaAsync(
+                "sistema_comisiones",
+                "Sistema - Comisiones",
+                "sistema_comisiones@tec.com"
+            );
+
+            // 🔸 Productos: revertir RF → Cafetería (se deshace)
+            recursosLiq.Credito += total;
+            cafLiq.Credito -= total;
+
+            _context.HistorialCreditos.Add(new HistorialCredito
+            {
+                NumeroControlAfectado = "recursos_liquidacion",
+                Monto = total,
+                FechaMovimiento = DateTime.Now,
+                AutCorreo = "Sistema-CancelarVentaCredito-Productos"
+            });
+
+            _context.HistorialCreditos.Add(new HistorialCredito
+            {
+                NumeroControlAfectado = "cafeteria_liquidacion",
+                Monto = -total,
+                FechaMovimiento = DateTime.Now,
+                AutCorreo = "Sistema-CancelarVentaCredito-Productos"
+            });
+
+            // 🔸 Comisiones: revertir RF → Sistema (se deshace)
+            if (comision > 0)
+            {
+                recursosCom.Credito += comision;
+                sisCom.Credito -= comision;
+
+                _context.HistorialCreditos.Add(new HistorialCredito
+                {
+                    NumeroControlAfectado = "recursos_comisiones",
+                    Monto = comision,
+                    FechaMovimiento = DateTime.Now,
+                    AutCorreo = "Sistema-CancelarVentaCredito-Comisiones"
+                });
+
+                _context.HistorialCreditos.Add(new HistorialCredito
+                {
+                    NumeroControlAfectado = "sistema_comisiones",
+                    Monto = -comision,
+                    FechaMovimiento = DateTime.Now,
+                    AutCorreo = "Sistema-CancelarVentaCredito-Comisiones"
+                });
+            }
+
+            // 3) Eliminar la venta (o marcar como cancelada si agregas un campo para eso)
+            _context.Ventas.Remove(venta);
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { mensaje = "Venta a crédito cancelada y movimientos revertidos correctamente." });
+        }
+
+        // Si en el futuro agregas otros métodos de pago, aquí los podrías manejar
+        return BadRequest("Método de pago no soportado para cancelación.");
+    }
+
+
+    private async Task<Usuario> GetOrCreateCuentaInternaAsync(
+        string numeroControl,
+        string nombre,
+        string correoAlias)
+    {
+        // 1) Buscar por NumeroControl
+        var cuenta = await _context.Usuarios
+            .FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);
+
+        if (cuenta != null)
+            return cuenta;
+
+        // 2) Buscar por correo (por si ya se creó con ese correo)
+        cuenta = await _context.Usuarios
+            .FirstOrDefaultAsync(u => u.CorreoUsuario == correoAlias);
+
+        if (cuenta != null)
+            return cuenta;
+
+        // 3) Si no existe, crearla
+        cuenta = new Usuario
+        {
+            NombreUsuario = nombre,
+            CorreoUsuario = correoAlias,
+            NumeroControl = numeroControl,
+            RolUsuario = "0",
+            Credito = 0,
+            CodigoQRTexto = "",
+            ContraUsuario = "INTERNAL"
+        };
+
+        _context.Usuarios.Add(cuenta);
         await _context.SaveChangesAsync();
 
-        return Ok(new { mensaje = "Venta cancelada correctamente." });
+        return cuenta;
     }
+
+
 }

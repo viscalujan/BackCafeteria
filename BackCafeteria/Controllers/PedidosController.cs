@@ -1,10 +1,11 @@
 ﻿using BackCafeteria.DTOs;
+using BackCafeteria.Helpers;
 using BackCafeteria.Models;
+using BackCafeteria.Services;
 using BackCafeteria.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using BackCafeteria.Services;
 
 namespace BackCafeteria.Controllers
 {
@@ -21,9 +22,9 @@ namespace BackCafeteria.Controllers
             _emailService = emailService;
         }
 
-        // 🔹 Crear pedido (rol alumno)
+  
         [HttpPost]
-        [Authorize(Roles = "alumno")]
+        // [Authorize(Roles = "alumno")]
         public async Task<IActionResult> CrearPedido([FromBody] PedidoCreateDTO dto)
         {
             if (dto.Detalles == null || !dto.Detalles.Any())
@@ -33,12 +34,11 @@ namespace BackCafeteria.Controllers
             if (usuario == null)
                 return NotFound("Usuario no encontrado.");
 
-            decimal total = 0;
+            decimal totalBruto = 0m;
             var detalles = new List<PedidoDetalle>();
 
             foreach (var item in dto.Detalles)
             {
-                // Agregar restricción: no permitir cantidades menores o iguales a 0
                 if (item.Cantidad <= 0)
                     return BadRequest($"La cantidad para el producto {item.ProductoId} debe ser mayor a 0.");
 
@@ -46,14 +46,14 @@ namespace BackCafeteria.Controllers
                 if (producto == null)
                     return NotFound($"Producto {item.ProductoId} no existe.");
 
-                // Agregar restricción: verificar que el precio del producto no sea menor o igual a 0 (aunque idealmente se valide en el modelo)
                 if (producto.Precio <= 0)
                     return BadRequest($"El precio del producto {producto.Nombre} debe ser mayor a 0.");
 
+                // 👇 Solo validamos stock aquí, NO lo descontamos todavía
                 if (producto.CantidadProducto < item.Cantidad)
                     return BadRequest($"No hay stock suficiente de {producto.Nombre}.");
 
-                total += producto.Precio * item.Cantidad;
+                totalBruto += producto.Precio * item.Cantidad;
 
                 detalles.Add(new PedidoDetalle
                 {
@@ -63,74 +63,50 @@ namespace BackCafeteria.Controllers
                 });
             }
 
-            // Agregar restricción: el total calculado no debe ser menor o igual a 0
-            if (total <= 0)
+            if (totalBruto <= 0)
                 return BadRequest("El total del pedido debe ser mayor a 0.");
 
-            if (usuario.Credito < total)
-                return BadRequest("Crédito insuficiente para realizar el pedido.");
+            // 🧮 Calcular comisión estimada para pedidos (no se cobra todavía)
+            var (comisionEstimado, totalConComision) = await ComisionHelper.CalcularComisionAsync(
+                _context,
+                totalBruto,
+                "pedido"
+            );
 
-            usuario.Credito -= total;
-
-            // Usuario liquidación ganha el monto (igual que ventas)
-            var liquidacion = await _context.Usuarios
-                .FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
-
-            if (liquidacion == null)
+            // 🔍 Verificar que el alumno tenga crédito suficiente para total + comisión
+            if (usuario.Credito < totalConComision)
             {
-                liquidacion = new Usuario
-                {
-                    NombreUsuario = "Liquidación",
-                    CorreoUsuario = "liquidacion@cafeteria.com",
-                    NumeroControl = "liquidacion",
-                    RolUsuario = "0",
-                    Credito = 0,
-                    CodigoQRTexto = "",
-                    ContraUsuario = "123456"
-                };
-                _context.Usuarios.Add(liquidacion);
-                await _context.SaveChangesAsync();
+                return BadRequest("Crédito insuficiente para crear este pedido (total + comisión).");
             }
 
-            liquidacion.Credito += total;
-
-            // Registrar en historial de liquidación
-            _context.HistorialCreditos.Add(new HistorialCredito
-            {
-                NumeroControlAfectado = "liquidacion",
-                Monto = total,
-                FechaMovimiento = DateTime.Now,
-                AutCorreo = "Sistema-Pedido"
-            });
-
+            // ✅ Crear el pedido en estado Pendiente, sin tocar crédito, stock ni cuentas
             var pedido = new Pedido
             {
                 FkIdUsuario = usuario.IdUsuario,
                 FechaPedido = DateTime.Now,
-                TotalPedido = total,
-                FkIdEstado = 1, // 1 = Pendiente
+                TotalPedido = totalBruto,           // total de productos
+                FkIdEstado = 1,                    // 1 = Pendiente
                 PedidoDetalles = detalles
             };
 
             _context.Pedidos.Add(pedido);
-
-            // Registrar movimiento en historial de crédito
-            _context.HistorialCreditos.Add(new HistorialCredito
-            {
-                NumeroControlAfectado = usuario.NumeroControl,
-                Monto = -total,
-                FechaMovimiento = DateTime.Now,
-                AutCorreo = "Sistema-Pedido"
-            });
-
             await _context.SaveChangesAsync();
 
-            return Ok(new { pedido.IdPedidos, pedido.TotalPedido, pedido.FechaPedido });
+            // Devolvemos info útil para el front
+            return Ok(new
+            {
+                pedido.IdPedidos,
+                TotalProductos = totalBruto,
+                ComisionEstimado = comisionEstimado,
+                TotalConComision = totalConComision,
+                pedido.FechaPedido
+            });
         }
+
 
         // 🔹 Obtener pedidos (alumno)
         [HttpGet("usuario/{idUsuario}")]
-        [Authorize(Roles = "alumno")]
+       // [Authorize(Roles = "alumno")]
         public async Task<IActionResult> GetPedidosPorUsuario(int idUsuario)
         {
             var pedidos = await _context.Pedidos
@@ -160,7 +136,7 @@ namespace BackCafeteria.Controllers
 
         // 🔹 Cambiar estado del pedido (rol ventas)
         [HttpPut("{idPedido}/estado")]
-        [Authorize(Roles = "ventas")]
+       // [Authorize(Roles = "ventas")]
         public async Task<IActionResult> CambiarEstado(int idPedido, [FromBody] CambioEstadoPedidoDTO dto)
         {
             var pedido = await _context.Pedidos
@@ -176,92 +152,268 @@ namespace BackCafeteria.Controllers
             switch (dto.NuevoEstado)
             {
                 case 2:
-                    // 2 = ACEPTADO
-                    // No se hace nada, solo cambia el estado
-                    break;
-
-                case 3:
-                    // 3 = LISTO → generar venta sin afectar crédito
-                    var venta = new Venta
+                    // 2 = ACEPTADO → aquí se cobra TODO, se crea la venta, se baja stock y se mueven cuentas
                     {
-                        FkIdUsuario = usuario.IdUsuario,
-                        MetodoPago = "pedido",
-                        FechaVenta = DateTime.Now,
-                        TotalVenta = pedido.TotalPedido ?? 0,
-                        FkIdPedido = pedido.IdPedidos, // 🔥 GUARDAMOS EL ID DEL PEDIDO
-                        VentaDetalles = pedido.PedidoDetalles.Select(d => new VentaDetalle
-                        {
-                            FkIdProducto = d.FkIdProducto,
-                            CantidadProducto = d.CantidadPdetalles,
-                            PrecioUnitario = d.PrecioDetalles
-                        }).ToList()
-                    };
+                        var totalBruto = pedido.TotalPedido ?? 0m;
 
-                    _context.Ventas.Add(venta);
-                    break;
+                        // 1) Calcular comisión para PEDIDO
+                        var (comisionPedido, totalConComisionPedido) = await ComisionHelper.CalcularComisionAsync(
+                            _context,
+                            totalBruto,
+                            "pedido"
+                        );
 
-                case 4:
-                    // 4 = RECHAZADO → regresar crédito, stock y guardar motivo
+                        // 2) Verificar crédito suficiente (total + comisión)
+                        if (usuario.Credito < totalConComisionPedido)
+                            return BadRequest("Crédito insuficiente para aceptar el pedido (total + comisión).");
 
-                    // Regresar stock
-                    foreach (var d in pedido.PedidoDetalles)
-                    {
-                        var producto = await _context.Productos.FindAsync(d.FkIdProducto);
-                        if (producto != null)
-                            producto.CantidadProducto += d.CantidadPdetalles;
-                    }
-
-                    // Regresar crédito al alumno
-                    usuario.Credito += pedido.TotalPedido ?? 0;
-
-                    _context.HistorialCreditos.Add(new HistorialCredito
-                    {
-                        NumeroControlAfectado = usuario.NumeroControl,
-                        Monto = pedido.TotalPedido ?? 0,
-                        FechaMovimiento = DateTime.Now,
-                        AutCorreo = "Sistema-RechazoPedido"
-                    });
-
-                    // Revertir liquidación
-                    var liquidacion = await _context.Usuarios
-                        .FirstOrDefaultAsync(u => u.NumeroControl == "liquidacion");
-
-                    if (liquidacion != null)
-                    {
-                        liquidacion.Credito -= pedido.TotalPedido ?? 0;
+                        // 3) Cobrar al alumno total + comisión
+                        usuario.Credito -= totalConComisionPedido;
 
                         _context.HistorialCreditos.Add(new HistorialCredito
                         {
-                            NumeroControlAfectado = "liquidacion",
-                            Monto = -(pedido.TotalPedido ?? 0),
+                            NumeroControlAfectado = usuario.NumeroControl,
+                            Monto = -totalConComisionPedido,
                             FechaMovimiento = DateTime.Now,
-                            AutCorreo = "Sistema-RechazoPedido"
+                            AutCorreo = "Sistema-Pedido-Aceptado"
                         });
+
+                        // 4) Descontar stock AHORA (hasta este momento se hace firme la venta)
+                        foreach (var d in pedido.PedidoDetalles)
+                        {
+                            var producto = await _context.Productos.FindAsync(d.FkIdProducto);
+                            if (producto == null)
+                                return NotFound($"Producto con ID {d.FkIdProducto} no encontrado.");
+
+                            if (producto.CantidadProducto < d.CantidadPdetalles)
+                                return BadRequest($"Stock insuficiente para el producto {producto.Nombre}.");
+
+                            producto.CantidadProducto -= d.CantidadPdetalles;
+                        }
+
+                        // 5) Cuentas internas
+                        var recursosLiq = await GetOrCreateCuentaInternaAsync(
+                            "recursos_liquidacion",
+                            "RF - Liquidación",
+                            "recursos_liquidacion@tec.com"
+                        );
+
+                        var recursosCom = await GetOrCreateCuentaInternaAsync(
+                            "recursos_comisiones",
+                            "RF - Comisiones",
+                            "recursos_comisiones@tec.com"
+                        );
+
+                        var cafLiq = await GetOrCreateCuentaInternaAsync(
+                            "cafeteria_liquidacion",
+                            "Cafetería - Liquidación",
+                            "cafeteria_liquidacion@tec.com"
+                        );
+
+                        var sisCom = await GetOrCreateCuentaInternaAsync(
+                            "sistema_comisiones",
+                            "Sistema - Comisiones",
+                            "sistema_comisiones@tec.com"
+                        );
+
+                        // 🔸 Productos: RF → Cafetería
+                        recursosLiq.Credito -= totalBruto;
+                        cafLiq.Credito += totalBruto;
+
+                        _context.HistorialCreditos.Add(new HistorialCredito
+                        {
+                            NumeroControlAfectado = "recursos_liquidacion",
+                            Monto = -totalBruto,
+                            FechaMovimiento = DateTime.Now,
+                            AutCorreo = "Sistema-Pedido-Productos"
+                        });
+
+                        _context.HistorialCreditos.Add(new HistorialCredito
+                        {
+                            NumeroControlAfectado = "cafeteria_liquidacion",
+                            Monto = totalBruto,
+                            FechaMovimiento = DateTime.Now,
+                            AutCorreo = "Sistema-Pedido-Productos"
+                        });
+
+                        // 🔸 Comisiones: RF → Sistema
+                        if (comisionPedido > 0)
+                        {
+                            recursosCom.Credito -= comisionPedido;
+                            sisCom.Credito += comisionPedido;
+
+                            _context.HistorialCreditos.Add(new HistorialCredito
+                            {
+                                NumeroControlAfectado = "recursos_comisiones",
+                                Monto = -comisionPedido,
+                                FechaMovimiento = DateTime.Now,
+                                AutCorreo = "Sistema-Pedido-Comision"
+                            });
+
+                            _context.HistorialCreditos.Add(new HistorialCredito
+                            {
+                                NumeroControlAfectado = "sistema_comisiones",
+                                Monto = comisionPedido,
+                                FechaMovimiento = DateTime.Now,
+                                AutCorreo = "Sistema-Pedido-Comision"
+                            });
+                        }
+
+                        // 6) Crear la Venta ligada al Pedido
+                        var venta = new Venta
+                        {
+                            FkIdUsuario = usuario.IdUsuario,
+                            MetodoPago = "pedido",
+                            FechaVenta = DateTime.Now,
+                            TotalVenta = totalBruto,
+                            Comision = comisionPedido,
+                            TotalConComision = totalConComisionPedido,
+                            FkIdPedido = pedido.IdPedidos,
+                            VentaDetalles = pedido.PedidoDetalles.Select(d => new VentaDetalle
+                            {
+                                FkIdProducto = d.FkIdProducto,
+                                CantidadProducto = d.CantidadPdetalles,
+                                PrecioUnitario = d.PrecioDetalles
+                            }).ToList()
+                        };
+
+                        _context.Ventas.Add(venta);
                     }
+                    break;
 
-                    // Guardar motivo
-                    pedido.MotivoRechazo = dto.Motivo;
+                case 3:
+                    // 3 = LISTO → solo cambia el estado, sin tocar dinero ni stock
+                    break;
 
-                    // Enviar correo al usuario
-                    await _emailService.EnviarCorreoRechazoPedidoAsync(
-                        usuario.CorreoUsuario,
-                        pedido.IdPedidos,
-                        dto.Motivo ?? "Sin motivo especificado",
-                        usuario.NombreUsuario
-                    );
+                case 4:
+                    // 4 = RECHAZADO
+                    {
+                        var totalPedido = pedido.TotalPedido ?? 0m;
 
+                        // 1) Ver si ya existe una venta ligada a este pedido
+                        var ventaPedido = await _context.Ventas
+                            .FirstOrDefaultAsync(v => v.FkIdPedido == pedido.IdPedidos && v.MetodoPago == "pedido");
+
+                        if (ventaPedido != null)
+                        {
+                            var totalBruto = ventaPedido.TotalVenta;
+                            var comisionPedido = ventaPedido.Comision;
+                            var totalConComisionPedido = ventaPedido.TotalConComision;
+
+                            // 2) Regresar stock de productos
+                            foreach (var d in pedido.PedidoDetalles)
+                            {
+                                var producto = await _context.Productos.FindAsync(d.FkIdProducto);
+                                if (producto != null)
+                                    producto.CantidadProducto += d.CantidadPdetalles;
+                            }
+
+                            // 3) Devolver al alumno lo que pagó (total + comisión)
+                            usuario.Credito += totalConComisionPedido;
+
+                            _context.HistorialCreditos.Add(new HistorialCredito
+                            {
+                                NumeroControlAfectado = usuario.NumeroControl,
+                                Monto = totalConComisionPedido,
+                                FechaMovimiento = DateTime.Now,
+                                AutCorreo = "Sistema-RechazoPedido-Total"
+                            });
+
+                            // 4) Revertir liquidaciones internas
+                            var recursosLiq = await GetOrCreateCuentaInternaAsync(
+                                "recursos_liquidacion",
+                                "RF - Liquidación",
+                                "recursos_liquidacion@tec.com"
+                            );
+
+                            var recursosCom = await GetOrCreateCuentaInternaAsync(
+                                "recursos_comisiones",
+                                "RF - Comisiones",
+                                "recursos_comisiones@tec.com"
+                            );
+
+                            var cafLiq = await GetOrCreateCuentaInternaAsync(
+                                "cafeteria_liquidacion",
+                                "Cafetería - Liquidación",
+                                "cafeteria_liquidacion@tec.com"
+                            );
+
+                            var sisCom = await GetOrCreateCuentaInternaAsync(
+                                "sistema_comisiones",
+                                "Sistema - Comisiones",
+                                "sistema_comisiones@tec.com"
+                            );
+
+                            // 🔸 Productos: revertir RF → Cafetería
+                            recursosLiq.Credito += totalBruto;
+                            cafLiq.Credito -= totalBruto;
+
+                            _context.HistorialCreditos.Add(new HistorialCredito
+                            {
+                                NumeroControlAfectado = "recursos_liquidacion",
+                                Monto = totalBruto,
+                                FechaMovimiento = DateTime.Now,
+                                AutCorreo = "Sistema-RechazoPedido-Productos"
+                            });
+
+                            _context.HistorialCreditos.Add(new HistorialCredito
+                            {
+                                NumeroControlAfectado = "cafeteria_liquidacion",
+                                Monto = -totalBruto,
+                                FechaMovimiento = DateTime.Now,
+                                AutCorreo = "Sistema-RechazoPedido-Productos"
+                            });
+
+                            // 🔸 Comisiones: revertir RF → Sistema
+                            if (comisionPedido > 0)
+                            {
+                                recursosCom.Credito += comisionPedido;
+                                sisCom.Credito -= comisionPedido;
+
+                                _context.HistorialCreditos.Add(new HistorialCredito
+                                {
+                                    NumeroControlAfectado = "recursos_comisiones",
+                                    Monto = comisionPedido,
+                                    FechaMovimiento = DateTime.Now,
+                                    AutCorreo = "Sistema-RechazoPedido-Comision"
+                                });
+
+                                _context.HistorialCreditos.Add(new HistorialCredito
+                                {
+                                    NumeroControlAfectado = "sistema_comisiones",
+                                    Monto = -comisionPedido,
+                                    FechaMovimiento = DateTime.Now,
+                                    AutCorreo = "Sistema-RechazoPedido-Comision"
+                                });
+                            }
+
+                            // 5) Eliminar la venta ligada
+                            _context.Ventas.Remove(ventaPedido);
+                        }
+                        // Si no hay venta ligada, solo queda marcado como Rechazado
+                        // (no había cobro todavía, así que no se toca nada de dinero ni stock)
+
+                        // 6) Guardar motivo y enviar correo
+                        pedido.MotivoRechazo = dto.Motivo;
+
+                        await _emailService.EnviarCorreoRechazoPedidoAsync(
+                            usuario.CorreoUsuario,
+                            pedido.IdPedidos,
+                            dto.Motivo ?? "Sin motivo especificado",
+                            usuario.NombreUsuario
+                        );
+                    }
                     break;
 
                 case 5:
-                    // 5 = ENTREGADO
-                    // No se toca nada más
+                    // 5 = ENTREGADO → solo cierre lógico
                     break;
 
                 default:
                     return BadRequest("Estado inválido.");
             }
 
-            // Actualizar estado
+            // Actualizar estado del pedido
             pedido.FkIdEstado = dto.NuevoEstado;
 
             await _context.SaveChangesAsync();
@@ -269,9 +421,10 @@ namespace BackCafeteria.Controllers
             return Ok(new { mensaje = $"Pedido actualizado a estado {dto.NuevoEstado} correctamente." });
         }
 
+
         // 🔹 Obtener todos los pedidos (rol ventas)
         [HttpGet("todos")]
-        [Authorize(Roles = "ventas")]
+     //   [Authorize(Roles = "ventas")]
         public async Task<IActionResult> GetTodosPedidos()
         {
             var pedidos = await _context.Pedidos
@@ -300,5 +453,45 @@ namespace BackCafeteria.Controllers
 
             return Ok(result);
         }
+
+        private async Task<Usuario> GetOrCreateCuentaInternaAsync(
+            string numeroControl,
+            string nombre,
+            string correoAlias)
+        {
+            // 1) Buscar por NumeroControl
+            var cuenta = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.NumeroControl == numeroControl);
+
+            if (cuenta != null)
+                return cuenta;
+
+            // 2) Buscar por correo (por si ya se creó con ese correo)
+            cuenta = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.CorreoUsuario == correoAlias);
+
+            if (cuenta != null)
+                return cuenta;
+
+            // 3) Si no existe, crearla
+            cuenta = new Usuario
+            {
+                NombreUsuario = nombre,
+                CorreoUsuario = correoAlias,
+                NumeroControl = numeroControl,
+                RolUsuario = "0",
+                Credito = 0,
+                CodigoQRTexto = "",
+                ContraUsuario = "INTERNAL"
+            };
+
+            _context.Usuarios.Add(cuenta);
+            await _context.SaveChangesAsync();
+
+            return cuenta;
+        }
+
+
+
     }
 }

@@ -10,6 +10,10 @@ namespace CafeteriaAPI.DTOs
         public decimal TotalVenta { get; set; }
         public DateTime FechaVenta { get; set; }
         public List<VentaDetalleResponseDTO> Detalles { get; set; } = new();
+
+        public decimal Comision { get; set; }
+        public decimal TotalConComision { get; set; }
+
     }
 
     public class VentaDetalleResponseDTO

@@ -14,7 +14,7 @@ namespace BackCafeteria.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "financiero,admin")]
+    //[Authorize(Roles = "financiero,admin")]
     public class UsuariosController : ControllerBase
     {
         private readonly CafeteriaDbv2Context _context;

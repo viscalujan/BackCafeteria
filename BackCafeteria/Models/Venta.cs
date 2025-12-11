@@ -25,6 +25,13 @@ namespace BackCafeteria.Models
         [ForeignKey("FkIdUsuario")]
         public virtual Usuario FkIdUsuarioNavigation { get; set; } = null!;
 
+        [Column("comision")]
+        public decimal Comision { get; set; }
+
+        [Column("total_con_comision")]
+        public decimal TotalConComision { get; set; }
+
+
         public int? FkIdPedido { get; set; }
 
         public virtual ICollection<VentaDetalle> VentaDetalles { get; set; } = new List<VentaDetalle>();

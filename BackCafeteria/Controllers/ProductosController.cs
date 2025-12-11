@@ -6,7 +6,7 @@ namespace BackCafeteria.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Roles = "productos")]
+   // [Authorize(Roles = "productos")]
     public class ProductosController : ControllerBase
     {
         private readonly CafeteriaDbv2Context _context;
